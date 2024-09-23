@@ -9,7 +9,7 @@ license = "Apache-2.0"
 bench = false
 
 [dependencies]
-anyhow = "1.0.81"
+anyhow = "1.0.89"
 acpi_tables = { path = "../acpi-tables" } 
 aes-gcm =  { version = "0.10.1", default-features = false, features = ["aes"] }
 aws-lc-rs = { version = "1.9.0", features = ["bindgen"] }
@@ -37,13 +37,13 @@ serde = { version = "1.0.210", features = ["derive", "rc"] }
 serde_json = "1.0.128"
 slab = "0.4.7"
 smallvec = "1.11.2"
-thiserror = "1.0.63"
+thiserror = "1.0.64"
 timerfd = "1.5.0"
 userfaultfd = "0.8.1"
 utils = { path = "../utils" }
-vhost = { version = "0.11.0", features = ["vhost-user-frontend"] }
+vhost = { version = "0.12.0", features = ["vhost-user-frontend"] }
 vm-allocator = "0.1.0"
-vm-memory = { version = "0.14.1", features = ["backend-mmap", "backend-bitmap"] }
+vm-memory = { version = "0.15.0", features = ["backend-mmap", "backend-bitmap"] }
 vm-superio = "0.8.0"
 zerocopy = { version = "0.7.35" }
 

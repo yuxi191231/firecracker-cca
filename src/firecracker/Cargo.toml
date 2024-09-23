@@ -1,0 +1,81 @@
+[package]
+name = "firecracker"
+version = "1.10.0-dev"
+authors = ["Amazon Firecracker team <firecracker-devel@amazon.com>"]
+edition = "2021"
+build = "build.rs"
+description = "Firecracker enables you to deploy workloads in lightweight virtual machines, called microVMs, which provide enhanced security and workload isolation over traditional VMs, while enabling the speed and resource efficiency of containers."
+homepage = "https://firecracker-microvm.github.io/"
+license = "Apache-2.0"
+
+[[bin]]
+name = "firecracker"
+bench = false
+
+[lib]
+bench = false
+
+[dependencies]
+displaydoc = "0.2.5"
+event-manager = "0.4.0"
+libc = "0.2.158"
+log-instrument = { path = "../log-instrument", optional = true }
+micro_http = { git = "https://github.com/firecracker-microvm/micro-http" }
+
+seccompiler = { path = "../seccompiler" }
+serde = { version = "1.0.210", features = ["derive"] }
+serde_derive = "1.0.136"
+serde_json = "1.0.128"
+thiserror = "1.0.63"
+timerfd = "1.6.0"
+utils = { path = "../utils" }
+vmm = { path = "../vmm" }
+
+[dev-dependencies]
+cargo_toml = "0.20.4"
+libc = "0.2.158"
+regex = { version = "1.10.6", default-features = false, features = ["std", "unicode-perl"] }
+
+# Dev-Dependencies for uffd examples
+serde = { version = "1.0.210", features = ["derive"] }
+userfaultfd = "0.8.1"
+
+[build-dependencies]
+bincode = "1.2.1"
+seccompiler = { path = "../seccompiler" }
+serde = { version = "1.0.210" }
+serde_json = "1.0.128"
+
+[features]
+tracing = ["log-instrument", "seccompiler/tracing", "utils/tracing", "vmm/tracing"]
+
+[lints]
+workspace = true
+
+[[example]]
+name = "uffd_malicious_handler"
+path = "examples/uffd/malicious_handler.rs"
+
+[[example]]
+name = "uffd_valid_handler"
+path = "examples/uffd/valid_handler.rs"
+
+[[example]]
+name = "uffd_fault_all_handler"
+path = "examples/uffd/fault_all_handler.rs"
+
+[[example]]
+name = "seccomp_harmless"
+path = "examples/seccomp/harmless.rs"
+
+[[example]]
+name = "seccomp_jailer"
+path = "examples/seccomp/jailer.rs"
+
+[[example]]
+name = "seccomp_malicious"
+path = "examples/seccomp/malicious.rs"
+
+[[example]]
+name = "seccomp_panic"
+path = "examples/seccomp/panic.rs"

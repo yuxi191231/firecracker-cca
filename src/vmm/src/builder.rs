@@ -10,7 +10,7 @@ use std::io::{self, Seek, SeekFrom};
 use std::sync::{Arc, Mutex};
 use crate::info;
 
-use crate::arch::aarch64::virtcca::{ArmRmeConfig, CCA};
+use crate::vstate::vm::{ArmRmeConfig, CCAError};
 use event_manager::{MutEventSubscriber, SubscriberOps};
 use libc::EFD_NONBLOCK;
 use linux_loader::cmdline::Cmdline as LoaderKernelCmdline;
@@ -162,15 +162,6 @@ fn create_vmm_and_vcpus(
         .map_err(VmmError::Vm)
         .map_err(StartMicrovmError::Internal)?;
 
-    let mut cca = None;
-    if cca_enabled {
-        info!("create_vmm_and_vcpus CCA::new");
-        let mut cca_dev = CCA::new(vm.fd().clone());
-        cca = Some(cca_dev);
-        info!("CCA::new : {:?}", cca);
-        info!("done CCA::new");
-    }
-
     let vcpus_exit_evt = EventFd::new(libc::EFD_NONBLOCK)
         .map_err(VmmError::EventFd)
         .map_err(Internal)?;
@@ -219,16 +210,12 @@ fn create_vmm_and_vcpus(
     // was already initialized.
     // Search for `kvm_arch_vcpu_create` in arch/arm/kvm/arm.c.
     #[cfg(target_arch = "aarch64")]
-    info!("before vcpus");
     let vcpus = {
-        info!("before create_vcpus");
         let vcpus = create_vcpus(&vm, vcpu_count, &vcpus_exit_evt).map_err(Internal)?;
-        info!("done create_vcpus");
         setup_interrupt_controller(&mut vm, vcpu_count)?;
-        info!("done setup_interrupt_controller");
         vcpus
     };
-    info!("aaaaaaaaaa");
+
     let vmm = Vmm {
         events_observer: Some(std::io::stdin()),
         instance_info: instance_info.clone(),
@@ -243,7 +230,6 @@ fn create_vmm_and_vcpus(
         #[cfg(target_arch = "x86_64")]
         pio_device_manager,
         acpi_device_manager,
-        cca,
     };
 
     Ok((vmm, vcpus))
@@ -323,7 +309,6 @@ pub fn build_microvm_for_boot(
         cpu_template.kvm_capabilities.clone(),
         cca_enabled,
     )?;
-    info!("done create_vmm_and_vcpus");
 
     info!("CCA ENABLED?");
     //let mut kernel_len: u64 = 0;
@@ -339,8 +324,9 @@ pub fn build_microvm_for_boot(
             info!("measurement algo: {:?}", arm_rme_config.measurement_algo);
             info!("personalization value: {:?}", arm_rme_config.personalization_value);
 
-
-        vmm.setup_cca(&arm_rme_config).unwrap();
+        vmm.vm
+           .arm_rme_realm_create(&arm_rme_config)
+           .map_err(|_| CCAError::CreateRealm);
     }
 
     // The boot timer device needs to be the first device attached in order
@@ -374,12 +360,12 @@ pub fn build_microvm_for_boot(
     if let Some(entropy) = vm_resources.entropy.get() {
         attach_entropy_device(&mut vmm, &mut boot_cmdline, entropy, event_manager)?;
     }
-
+    info!("hello1");
     #[cfg(target_arch = "aarch64")]
     attach_legacy_devices_aarch64(event_manager, &mut vmm, &mut boot_cmdline).map_err(Internal)?;
 
     attach_vmgenid_device(&mut vmm)?;
-
+    info!("hello2");
     configure_system_for_boot(
         &mut vmm,
         vcpus.as_mut(),
@@ -389,11 +375,13 @@ pub fn build_microvm_for_boot(
         &initrd,
         boot_cmdline,
     )?;
-
+    info!("hello3");
     if cca_enabled {
-        vmm.finish_cca().unwrap();
+        vmm.vm
+            .arm_rme_realm_finalize()
+            .map_err(|_| CCAError::FinalizeRealm);
     }
-
+    info!("hello4");
     // Move vcpus to their own threads and start their state machine in the 'Paused' state.
     vmm.start_vcpus(
         vcpus,
@@ -404,7 +392,7 @@ pub fn build_microvm_for_boot(
     )
     .map_err(VmmError::VcpuStart)
     .map_err(Internal)?;
-
+    info!("hello5");
     // Load seccomp filters for the VMM thread.
     // Execution panics if filters cannot be loaded, use --no-seccomp if skipping filters
     // altogether is the desired behaviour.
@@ -416,7 +404,7 @@ pub fn build_microvm_for_boot(
     )
     .map_err(VmmError::SeccompFilters)
     .map_err(Internal)?;
-
+    info!("hello6");
     let vmm = Arc::new(Mutex::new(vmm));
     event_manager.add_subscriber(vmm.clone());
 
@@ -777,15 +765,10 @@ fn attach_legacy_devices_aarch64(
 
 fn create_vcpus(vm: &Vm, vcpu_count: u8, exit_evt: &EventFd) -> Result<Vec<Vcpu>, VmmError> {
     let mut vcpus = Vec::with_capacity(vcpu_count as usize);
-    info!("0000");
     for cpu_idx in 0..vcpu_count {
-        info!("1111");
         let exit_evt = exit_evt.try_clone().map_err(VmmError::EventFd)?;
-        info!("2222");
         let vcpu = Vcpu::new(cpu_idx, vm, exit_evt).map_err(VmmError::VcpuCreate)?;
-        info!("3333");
         vcpus.push(vcpu);
-        info!("4444");
     }
     Ok(vcpus)
 }
@@ -1198,7 +1181,6 @@ pub mod tests {
             #[cfg(target_arch = "x86_64")]
             pio_device_manager,
             acpi_device_manager,
-            cca,
         }
     }
 

@@ -1,14 +1,25 @@
-2024-09-13T15:36:20.554648771 [anonymous-instance:main] Running Firecracker v1.10.0-dev
-2024-09-13T15:36:20.559400591 [anonymous-instance:main] CCA ENABLED?
-2024-09-13T15:36:20.559416341 [anonymous-instance:main] CCA ENABLED!
-2024-09-13T15:36:20.559420966 [anonymous-instance:main] measurement algo: Some("sha512")
-2024-09-13T15:36:20.559425758 [anonymous-instance:main] personalization value: Some("")
-2024-09-13T15:36:20.559429216 [anonymous-instance:main] impl Vmm setup cca
-2024-09-13T15:36:20.559729176 [anonymous-instance:main] Could not read the coherency line size, number of sets for cache level 1.
-2024-09-13T15:36:20.560532806 [anonymous-instance:main] Artificially kick devices.
-2024-09-13T15:36:20.560567015 [anonymous-instance:fc_vcpu 0] Requested a vCPU run with immediate_exit enabled. The operation was skipped
-2024-09-13T15:36:20.560587223 [anonymous-instance:fc_vcpu 1] Received a VcpuEvent::Resume message with immediate_exit enabled. immediate_exit was disabled before proceeding
-2024-09-13T15:36:20.560608015 [anonymous-instance:main] Successfully started microvm that was configured from one single json
+2024-09-24T16:44:52.104109656 [anonymous-instance:main] Running Firecracker v1.10.0-dev
+2024-09-24T16:44:52.111034842 [anonymous-instance:main] Vcpu::new
+2024-09-24T16:44:52.111059717 [anonymous-instance:main] into KvmVcpu::new()
+2024-09-24T16:44:52.111066092 [anonymous-instance:main] vm.fd(): VmFd { vm: File { fd: 18, path: "anon_inode:kvm-vm", read: true, write: true }, run_size: 32768 }
+2024-09-24T16:44:52.111108800 [anonymous-instance:main] index: 0
+2024-09-24T16:44:52.111145384 [anonymous-instance:main] kvmvcpu: VcpuFd { vcpu: File { fd: 20, path: "anon_inode:kvm-vcpu:0", read: true, write: true }, kvm_run_ptr: KvmRunWrapper { kvm_run_ptr: 0xffff854f0000, mmap_size: 32768 }, coalesced_mmio_ring: None }
+2024-09-24T16:44:52.111174551 [anonymous-instance:main] Vcpu::new
+2024-09-24T16:44:52.111181676 [anonymous-instance:main] into KvmVcpu::new()
+2024-09-24T16:44:52.111187551 [anonymous-instance:main] vm.fd(): VmFd { vm: File { fd: 18, path: "anon_inode:kvm-vm", read: true, write: true }, run_size: 32768 }
+2024-09-24T16:44:52.111201926 [anonymous-instance:main] index: 1
+2024-09-24T16:44:52.111218926 [anonymous-instance:main] kvmvcpu: VcpuFd { vcpu: File { fd: 22, path: "anon_inode:kvm-vcpu:1", read: true, write: true }, kvm_run_ptr: KvmRunWrapper { kvm_run_ptr: 0xffff854e8000, mmap_size: 32768 }, coalesced_mmio_ring: None }
+2024-09-24T16:44:52.111341593 [anonymous-instance:main] CCA ENABLED?
+2024-09-24T16:44:52.111349426 [anonymous-instance:main] CCA ENABLED!
+2024-09-24T16:44:52.111355926 [anonymous-instance:main] measurement algo: Some("sha512")
+2024-09-24T16:44:52.111362968 [anonymous-instance:main] personalization value: Some("11")
+2024-09-24T16:44:52.111369718 [anonymous-instance:main] into arm_rme_realm_create()
+2024-09-24T16:44:52.111850761 [anonymous-instance:main] Could not read the coherency line size, number of sets for cache level 1.
+2024-09-24T16:44:52.112423887 [anonymous-instance:main] into arm_rme_realm_finalize()
+2024-09-24T16:44:52.113126889 [anonymous-instance:main] Artificially kick devices.
+2024-09-24T16:44:52.113173140 [anonymous-instance:fc_vcpu 0] Received a VcpuEvent::Resume message with immediate_exit enabled. immediate_exit was disabled before proceeding
+2024-09-24T16:44:52.113195556 [anonymous-instance:fc_vcpu 1] Received a VcpuEvent::Resume message with immediate_exit enabled. immediate_exit was disabled before proceeding
+2024-09-24T16:44:52.113216640 [anonymous-instance:main] Successfully started microvm that was configured from one single json
 [    0.000000] Booting Linux on physical CPU 0x0000000000 [0x612f0250]
 [    0.000000] Linux version 5.10.219 (root@7589f831f36b) (gcc (Ubuntu 11.4.0-1ubuntu1~22.04) 11.4.0, GNU ld (GNU Binutils for Ubuntu) 2.38) #1 SMP Thu Aug 1 11:01:51 UTC 2024
 [    0.000000] Machine model: linux,dummy-virt
@@ -59,216 +70,216 @@
 [    0.000000] arch_timer: cp15 timer(s) running at 24.00MHz (virt).
 [    0.000000] clocksource: arch_sys_counter: mask: 0xffffffffffffff max_cycles: 0x588fe9dc0, max_idle_ns: 440795202592 ns
 [    0.000000] sched_clock: 56 bits at 24MHz, resolution 41ns, wraps every 4398046511097ns
-[    0.000515] Console: colour dummy device 80x25
-[    0.000792] Calibrating delay loop (skipped), value calculated using timer frequency.. 48.00 BogoMIPS (lpj=240000)
-[    0.001408] pid_max: default: 32768 minimum: 301
-[    0.001714] LSM: Security Framework initializing
-[    0.002000] SELinux:  Initializing.
-[    0.002243] Mount-cache hash table entries: 2048 (order: 2, 16384 bytes, linear)
-[    0.002679] Mountpoint-cache hash table entries: 2048 (order: 2, 16384 bytes, linear)
-[    0.003501] rcu: Hierarchical SRCU implementation.
-[    0.003809] EFI services will not be available.
-[    0.004108] smp: Bringing up secondary CPUs ...
-[    0.004464] Detected VIPT I-cache on CPU1
-[    0.004470] GICv3: CPU1: found redistributor 1 region 0:0x000000003ffd0000
-[    0.004495] CPU1: Booted secondary processor 0x0000000001 [0x612f0250]
-[    0.004538] smp: Brought up 1 node, 2 CPUs
-[    0.005809] SMP: Total of 2 processors activated.
-[    0.006089] CPU features: detected: Privileged Access Never
-[    0.006415] CPU features: detected: LSE atomic instructions
-[    0.006745] CPU features: detected: User Access Override
-[    0.007060] CPU features: detected: Common not Private translations
-[    0.007429] CPU features: detected: RAS Extension Support
-[    0.007808] CPU features: detected: Data cache clean to the PoU not required for I/D coherence
-[    0.008347] CPU features: detected: Stage-2 Force Write-Back
-[    0.008689] CPU features: detected: CRC32 instructions
-[    0.009032] CPU features: detected: Speculative Store Bypassing Safe (SSBS)
-[    0.009473] CPU features: detected: Speculation barrier (SB)
-[    0.009816] CPU features: detected: E0PD
-[    0.010055] CPU features: detected: ARMv8.4 Translation Table Level
-[    0.010433] CPU features: detected: TLB range maintenance instructions
-[    0.025499] CPU: All CPU(s) started at EL1
-[    0.025760] alternatives: patching kernel code
-[    0.026344] devtmpfs: initialized
-[    0.026774] clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 19112604462750000 ns
-[    0.027367] futex hash table entries: 512 (order: 3, 32768 bytes, linear)
-[    0.027817] DMI not present or invalid.
-[    0.028172] NET: Registered protocol family 16
-[    0.028522] DMA: preallocated 128 KiB GFP_KERNEL pool for atomic allocations
-[    0.028958] DMA: preallocated 128 KiB GFP_KERNEL|GFP_DMA pool for atomic allocations
-[    0.029515] DMA: preallocated 128 KiB GFP_KERNEL|GFP_DMA32 pool for atomic allocations
-[    0.029986] audit: initializing netlink subsys (disabled)
-[    0.030353] audit: type=2000 audit(0.030:1): state=initialized audit_enabled=0 res=1
-[    0.030393] thermal_sys: Registered thermal governor 'fair_share'
-[    0.030818] thermal_sys: Registered thermal governor 'step_wise'
-[    0.031193] thermal_sys: Registered thermal governor 'user_space'
-[    0.031584] cpuidle: using governor menu
-[    0.032200] hw-breakpoint: found 6 breakpoint and 4 watchpoint registers.
-[    0.032616] ASID allocator initialised with 256 entries
-[    0.033486] HugeTLB registered 1.00 GiB page size, pre-allocated 0 pages
-[    0.033893] HugeTLB registered 32.0 MiB page size, pre-allocated 0 pages
-[    0.034293] HugeTLB registered 2.00 MiB page size, pre-allocated 0 pages
-[    0.034729] HugeTLB registered 64.0 KiB page size, pre-allocated 0 pages
-[    0.046856] ACPI: Interpreter disabled.
-[    0.047165] iommu: Default domain type: Translated 
-[    0.047616] SCSI subsystem initialized
-[    0.047912] pps_core: LinuxPPS API ver. 1 registered
-[    0.048297] pps_core: Software ver. 5.3.6 - Copyright 2005-2007 Rodolfo Giometti <giometti@linux.it>
-[    0.049002] PTP clock support registered
-[    0.049338] NetLabel: Initializing
-[    0.049560] NetLabel:  domain hash size = 128
-[    0.049822] NetLabel:  protocols = UNLABELED CIPSOv4 CALIPSO
-[    0.050185] NetLabel:  unlabeled traffic allowed by default
-[    0.050568] clocksource: Switched to clocksource arch_sys_counter
-[    0.050971] VFS: Disk quotas dquot_6.6.0
-[    0.051205] VFS: Dquot-cache hash table entries: 512 (order 0, 4096 bytes)
-[    0.051625] pnp: PnP ACPI: disabled
-[    0.052487] NET: Registered protocol family 2
-[    0.052772] IP idents hash table entries: 16384 (order: 5, 131072 bytes, linear)
-[    0.053414] tcp_listen_portaddr_hash hash table entries: 512 (order: 1, 8192 bytes, linear)
-[    0.053900] TCP established hash table entries: 8192 (order: 4, 65536 bytes, linear)
-[    0.054350] TCP bind hash table entries: 8192 (order: 5, 131072 bytes, linear)
-[    0.054798] TCP: Hash tables configured (established 8192 bind 8192)
-[    0.055211] MPTCP token hash table entries: 1024 (order: 2, 24576 bytes, linear)
-[    0.055640] UDP hash table entries: 512 (order: 2, 16384 bytes, linear)
-[    0.056039] UDP-Lite hash table entries: 512 (order: 2, 16384 bytes, linear)
-[    0.056479] NET: Registered protocol family 1
-[    0.056840] RPC: Registered named UNIX socket transport module.
-[    0.057198] RPC: Registered udp transport module.
-[    0.057471] RPC: Registered tcp transport module.
-[    0.057742] RPC: Registered tcp NFSv4.1 backchannel transport module.
-[    0.058117] NET: Registered protocol family 44
-[    0.058516] Initialise system trusted keyrings
-[    0.058814] workingset: timestamp_bits=36 max_order=18 bucket_order=0
-[    0.059666] zbud: loaded
-[    0.059981] squashfs: version 4.0 (2009/01/31) Phillip Lougher
-[    0.060434] NFS: Registering the id_resolver key type
-[    0.060783] Key type id_resolver registered
-[    0.061037] Key type id_legacy registered
-[    0.061296] nfs4filelayout_init: NFSv4 File Layout Driver Registering...
-[    0.061742] SGI XFS with ACLs, security attributes, quota, no debug enabled
-[    0.062456] Key type asymmetric registered
-[    0.062711] Asymmetric key parser 'x509' registered
-[    0.063020] Block layer SCSI generic (bsg) driver version 0.4 loaded (major 250)
-[    0.063512] io scheduler mq-deadline registered
-[    0.063792] io scheduler kyber registered
-[    0.064063] io scheduler bfq registered
-[    0.064429] Serial: 8250/16550 driver, 1 ports, IRQ sharing disabled
-[    0.064920] printk: console [ttyS0] disabled
-[    0.065186] 40001000.uart: ttyS0 at MMIO 0x40001000 (irq = 13, base_baud = 1500000) is a 16550A
-[    0.065737] printk: console [ttyS0] enabled
-[    0.065737] printk: console [ttyS0] enabled
-[    0.066257] printk: bootconsole [uart0] disabled
-[    0.066257] printk: bootconsole [uart0] disabled
-[    0.067507] loop: module loaded
-[    0.067864] virtio_blk virtio0: [vda] 614400 512-byte logical blocks (315 MB/300 MiB)
-[    0.068373] vda: detected capacity change from 0 to 314572800
-[    0.069002] Loading iSCSI transport class v2.0-870.
-[    0.069500] iscsi: registered transport (tcp)
-[    0.069954] rtc-pl031 40002000.rtc: registered as rtc0
-[    0.070409] rtc-pl031 40002000.rtc: setting system clock to 2024-09-13T07:36:20 UTC (1726212980)
-[    0.071306] hid: raw HID events driver (C) Jiri Kosina
-[    0.071979] Initializing XFRM netlink socket
-[    0.072422] NET: Registered protocol family 10
-[    0.073058] Segment Routing with IPv6
-[    0.073857] bpfilter: Loaded bpfilter_umh pid 92
-[    0.074317] NET: Registered protocol family 17
-[    0.074712] Bridge firewalling registered
-[    0.075098] Key type dns_resolver registered
-[    0.075491] NET: Registered protocol family 40
-[    0.075903] registered taskstats version 1
-[    0.076567] Loading compiled-in X.509 certificates
-[    0.076983] zswap: loaded using pool lzo/zbud
-[    0.077408] Key type .fscrypt registered
-[    0.077743] Key type fscrypt-provisioning registered
-[    0.078270] Key type encrypted registered
-[    0.078659] clk: Disabling unused clocks
-[    0.079863] EXT4-fs (vda): mounted filesystem with ordered data mode. Opts: (null)
-[    0.080662] VFS: Mounted root (ext4 filesystem) on device 254:0.
-[    0.081438] devtmpfs: mounted
-[    0.081996] Freeing unused kernel memory: 2880K
-[    0.120735] Run /sbin/init as init process
+[    0.000539] Console: colour dummy device 80x25
+[    0.000818] Calibrating delay loop (skipped), value calculated using timer frequency.. 48.00 BogoMIPS (lpj=240000)
+[    0.001430] pid_max: default: 32768 minimum: 301
+[    0.001740] LSM: Security Framework initializing
+[    0.002028] SELinux:  Initializing.
+[    0.002275] Mount-cache hash table entries: 2048 (order: 2, 16384 bytes, linear)
+[    0.002715] Mountpoint-cache hash table entries: 2048 (order: 2, 16384 bytes, linear)
+[    0.003555] rcu: Hierarchical SRCU implementation.
+[    0.003873] EFI services will not be available.
+[    0.004172] smp: Bringing up secondary CPUs ...
+[    0.004539] Detected VIPT I-cache on CPU1
+[    0.004546] GICv3: CPU1: found redistributor 1 region 0:0x000000003ffd0000
+[    0.004570] CPU1: Booted secondary processor 0x0000000001 [0x612f0250]
+[    0.004605] smp: Brought up 1 node, 2 CPUs
+[    0.005881] SMP: Total of 2 processors activated.
+[    0.006161] CPU features: detected: Privileged Access Never
+[    0.006489] CPU features: detected: LSE atomic instructions
+[    0.006832] CPU features: detected: User Access Override
+[    0.007145] CPU features: detected: Common not Private translations
+[    0.007510] CPU features: detected: RAS Extension Support
+[    0.007828] CPU features: detected: Data cache clean to the PoU not required for I/D coherence
+[    0.008334] CPU features: detected: Stage-2 Force Write-Back
+[    0.008670] CPU features: detected: CRC32 instructions
+[    0.008985] CPU features: detected: Speculative Store Bypassing Safe (SSBS)
+[    0.009393] CPU features: detected: Speculation barrier (SB)
+[    0.009733] CPU features: detected: E0PD
+[    0.009963] CPU features: detected: ARMv8.4 Translation Table Level
+[    0.010329] CPU features: detected: TLB range maintenance instructions
+[    0.027333] CPU: All CPU(s) started at EL1
+[    0.027589] alternatives: patching kernel code
+[    0.028170] devtmpfs: initialized
+[    0.028598] clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 19112604462750000 ns
+[    0.029211] futex hash table entries: 512 (order: 3, 32768 bytes, linear)
+[    0.029664] DMI not present or invalid.
+[    0.030006] NET: Registered protocol family 16
+[    0.030341] DMA: preallocated 128 KiB GFP_KERNEL pool for atomic allocations
+[    0.030772] DMA: preallocated 128 KiB GFP_KERNEL|GFP_DMA pool for atomic allocations
+[    0.031236] DMA: preallocated 128 KiB GFP_KERNEL|GFP_DMA32 pool for atomic allocations
+[    0.031698] audit: initializing netlink subsys (disabled)
+[    0.032062] audit: type=2000 audit(0.030:1): state=initialized audit_enabled=0 res=1
+[    0.032109] thermal_sys: Registered thermal governor 'fair_share'
+[    0.032642] thermal_sys: Registered thermal governor 'step_wise'
+[    0.033096] thermal_sys: Registered thermal governor 'user_space'
+[    0.033652] cpuidle: using governor menu
+[    0.035152] hw-breakpoint: found 6 breakpoint and 4 watchpoint registers.
+[    0.036151] ASID allocator initialised with 256 entries
+[    0.038168] HugeTLB registered 1.00 GiB page size, pre-allocated 0 pages
+[    0.039143] HugeTLB registered 32.0 MiB page size, pre-allocated 0 pages
+[    0.040220] HugeTLB registered 2.00 MiB page size, pre-allocated 0 pages
+[    0.040819] HugeTLB registered 64.0 KiB page size, pre-allocated 0 pages
+[    0.054034] ACPI: Interpreter disabled.
+[    0.054287] iommu: Default domain type: Translated 
+[    0.054645] SCSI subsystem initialized
+[    0.054872] pps_core: LinuxPPS API ver. 1 registered
+[    0.055159] pps_core: Software ver. 5.3.6 - Copyright 2005-2007 Rodolfo Giometti <giometti@linux.it>
+[    0.055695] PTP clock support registered
+[    0.056021] NetLabel: Initializing
+[    0.056221] NetLabel:  domain hash size = 128
+[    0.056482] NetLabel:  protocols = UNLABELED CIPSOv4 CALIPSO
+[    0.056827] NetLabel:  unlabeled traffic allowed by default
+[    0.057250] clocksource: Switched to clocksource arch_sys_counter
+[    0.058389] VFS: Disk quotas dquot_6.6.0
+[    0.059066] VFS: Dquot-cache hash table entries: 512 (order 0, 4096 bytes)
+[    0.060287] pnp: PnP ACPI: disabled
+[    0.062469] NET: Registered protocol family 2
+[    0.062903] IP idents hash table entries: 16384 (order: 5, 131072 bytes, linear)
+[    0.063879] tcp_listen_portaddr_hash hash table entries: 512 (order: 1, 8192 bytes, linear)
+[    0.064619] TCP established hash table entries: 8192 (order: 4, 65536 bytes, linear)
+[    0.065480] TCP bind hash table entries: 8192 (order: 5, 131072 bytes, linear)
+[    0.066135] TCP: Hash tables configured (established 8192 bind 8192)
+[    0.066803] MPTCP token hash table entries: 1024 (order: 2, 24576 bytes, linear)
+[    0.067532] UDP hash table entries: 512 (order: 2, 16384 bytes, linear)
+[    0.068127] UDP-Lite hash table entries: 512 (order: 2, 16384 bytes, linear)
+[    0.068803] NET: Registered protocol family 1
+[    0.069416] RPC: Registered named UNIX socket transport module.
+[    0.069976] RPC: Registered udp transport module.
+[    0.070437] RPC: Registered tcp transport module.
+[    0.070866] RPC: Registered tcp NFSv4.1 backchannel transport module.
+[    0.071441] NET: Registered protocol family 44
+[    0.071915] Initialise system trusted keyrings
+[    0.072241] workingset: timestamp_bits=36 max_order=18 bucket_order=0
+[    0.073670] zbud: loaded
+[    0.074216] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    0.074956] NFS: Registering the id_resolver key type
+[    0.075259] Key type id_resolver registered
+[    0.075506] Key type id_legacy registered
+[    0.075756] nfs4filelayout_init: NFSv4 File Layout Driver Registering...
+[    0.076191] SGI XFS with ACLs, security attributes, quota, no debug enabled
+[    0.076904] Key type asymmetric registered
+[    0.077147] Asymmetric key parser 'x509' registered
+[    0.077475] Block layer SCSI generic (bsg) driver version 0.4 loaded (major 250)
+[    0.077966] io scheduler mq-deadline registered
+[    0.078429] io scheduler kyber registered
+[    0.078862] io scheduler bfq registered
+[    0.079479] Serial: 8250/16550 driver, 1 ports, IRQ sharing disabled
+[    0.080241] printk: console [ttyS0] disabled
+[    0.080682] 40001000.uart: ttyS0 at MMIO 0x40001000 (irq = 13, base_baud = 1500000) is a 16550A
+[    0.081601] printk: console [ttyS0] enabled
+[    0.081601] printk: console [ttyS0] enabled
+[    0.082298] printk: bootconsole [uart0] disabled
+[    0.082298] printk: bootconsole [uart0] disabled
+[    0.084121] loop: module loaded
+[    0.084778] virtio_blk virtio0: [vda] 614400 512-byte logical blocks (315 MB/300 MiB)
+[    0.085602] vda: detected capacity change from 0 to 314572800
+[    0.086572] Loading iSCSI transport class v2.0-870.
+[    0.087307] iscsi: registered transport (tcp)
+[    0.087886] rtc-pl031 40002000.rtc: registered as rtc0
+[    0.088444] rtc-pl031 40002000.rtc: setting system clock to 2024-09-24T08:44:52 UTC (1727167492)
+[    0.089380] hid: raw HID events driver (C) Jiri Kosina
+[    0.090132] Initializing XFRM netlink socket
+[    0.090673] NET: Registered protocol family 10
+[    0.091432] Segment Routing with IPv6
+[    0.092238] bpfilter: Loaded bpfilter_umh pid 91
+[    0.092872] NET: Registered protocol family 17
+[    0.093456] Bridge firewalling registered
+[    0.094002] Key type dns_resolver registered
+[    0.094565] NET: Registered protocol family 40
+[    0.095172] registered taskstats version 1
+[    0.096106] Loading compiled-in X.509 certificates
+[    0.096703] zswap: loaded using pool lzo/zbud
+[    0.097332] Key type .fscrypt registered
+[    0.097607] Key type fscrypt-provisioning registered
+[    0.098088] Key type encrypted registered
+[    0.098663] clk: Disabling unused clocks
+[    0.100448] EXT4-fs (vda): mounted filesystem with ordered data mode. Opts: (null)
+[    0.101359] VFS: Mounted root (ext4 filesystem) on device 254:0.
+[    0.102331] devtmpfs: mounted
+[    0.102728] Freeing unused kernel memory: 2880K
+[    0.157376] Run /sbin/init as init process
 SELinux:  Could not open policy file <= /etc/selinux/targeted/policy/policy.33:  No such file or directory
 libbpf: failed to find valid kernel BTF
 libbpf: Error loading vmlinux BTF: -3
 libbpf: failed to load object 'iterators_bpf'
 libbpf: failed to load BPF skeleton 'iterators_bpf': -3
 Failed load could be due to wrong endianness
-[    0.138747] systemd[1]: systemd 249.11-0ubuntu3.12 running in system mode (+PAM +AUDIT +SELINUX +APPARMOR +IMA +SMACK +SECCOMP +GCRYPT +GNUTLS +OPENSSL +ACL +BLKID +CURL +ELFUTILS +FIDO2 +IDN2 -IDN +IPTC +KMOD +LIBCRYPTSETUP +LIBFDISK +PCRE2 -PWQUALITY -P11KIT -QRENCODE +BZIP2 +LZ4 +XZ +ZLIB +ZSTD -XKBCOMMON +UTMP +SYSVINIT default-hierarchy=unified)
-[    0.140616] systemd[1]: Detected architecture arm64.
+[    0.176974] systemd[1]: systemd 249.11-0ubuntu3.12 running in system mode (+PAM +AUDIT +SELINUX +APPARMOR +IMA +SMACK +SECCOMP +GCRYPT +GNUTLS +OPENSSL +ACL +BLKID +CURL +ELFUTILS +FIDO2 +IDN2 -IDN +IPTC +KMOD +LIBCRYPTSETUP +LIBFDISK +PCRE2 -PWQUALITY -P11KIT -QRENCODE +BZIP2 +LZ4 +XZ +ZLIB +ZSTD -XKBCOMMON +UTMP +SYSVINIT default-hierarchy=unified)
+[    0.180718] systemd[1]: Detected architecture arm64.
 
 Welcome to Ubuntu 22.04.4 LTS!
 
-[    0.141359] systemd[1]: Hostname set to <ubuntu-fc-uvm>.
-[    0.156403] random: systemd: uninitialized urandom read (16 bytes read)
-[    0.171443] systemd[1]: Queued start job for default target Graphical Interface.
-[    0.172007] random: systemd: uninitialized urandom read (16 bytes read)
-[    0.172713] systemd[1]: Created slice Slice /system/getty.
+[    0.181812] systemd[1]: Hostname set to <ubuntu-fc-uvm>.
+[    0.197753] random: systemd: uninitialized urandom read (16 bytes read)
+[    0.212501] systemd[1]: Queued start job for default target Graphical Interface.
+[    0.213065] random: systemd: uninitialized urandom read (16 bytes read)
+[    0.213745] systemd[1]: Created slice Slice /system/getty.
 [  OK  ] Created slice Slice /system/getty.
-[    0.173417] random: systemd: uninitialized urandom read (16 bytes read)
-[    0.173925] systemd[1]: Created slice Slice /system/modprobe.
+[    0.214409] random: systemd: uninitialized urandom read (16 bytes read)
+[    0.214897] systemd[1]: Created slice Slice /system/modprobe.
 [  OK  ] Created slice Slice /system/modprobe.
-[    0.174695] systemd[1]: Created slice Slice /system/serial-getty.
+[    0.215658] systemd[1]: Created slice Slice /system/serial-getty.
 [  OK  ] Created slice Slice /system/serial-getty.
-[    0.175411] systemd[1]: Started Dispatch Password Requests to Console Directory Watch.
+[    0.216362] systemd[1]: Started Dispatch Password Requests to Console Directory Watch.
 [  OK  ] Started Dispatch Password …ts to Console Directory Watch.
-[    0.176304] systemd[1]: Started Forward Password Requests to Wall Directory Watch.
+[    0.217228] systemd[1]: Started Forward Password Requests to Wall Directory Watch.
 [  OK  ] Started Forward Password R…uests to Wall Directory Watch.
-[    0.177224] systemd[1]: Set up automount Arbitrary Executable File Formats File System Automount Point.
+[    0.218291] systemd[1]: Set up automount Arbitrary Executable File Formats File System Automount Point.
 [  OK  ] Set up automount Arbitrary…s File System Automount Point.
-[    0.178182] systemd[1]: Reached target Local Encrypted Volumes.
+[    0.219363] systemd[1]: Reached target Local Encrypted Volumes.
 [  OK  ] Reached target Local Encrypted Volumes.
-[    0.178884] systemd[1]: Reached target Path Units.
+[    0.220127] systemd[1]: Reached target Path Units.
 [  OK  ] Reached target Path Units.
-[    0.179457] systemd[1]: Reached target Remote File Systems.
+[    0.220731] systemd[1]: Reached target Remote File Systems.
 [  OK  ] Reached target Remote File Systems.
-[    0.180101] systemd[1]: Reached target Slice Units.
+[    0.221423] systemd[1]: Reached target Slice Units.
 [  OK  ] Reached target Slice Units.
-[    0.180871] systemd[1]: Reached target Swaps.
+[    0.222035] systemd[1]: Reached target Swaps.
 [  OK  ] Reached target Swaps.
-[    0.181469] systemd[1]: Reached target Local Verity Protected Volumes.
+[    0.222589] systemd[1]: Reached target Local Verity Protected Volumes.
 [  OK  ] Reached target Local Verity Protected Volumes.
-[    0.182305] systemd[1]: Listening on initctl Compatibility Named Pipe.
+[    0.223417] systemd[1]: Listening on initctl Compatibility Named Pipe.
 [  OK  ] Listening on initctl Compatibility Named Pipe.
-[    0.183206] systemd[1]: Listening on Journal Audit Socket.
+[    0.224314] systemd[1]: Listening on Journal Audit Socket.
 [  OK  ] Listening on Journal Audit Socket.
-[    0.183934] systemd[1]: Listening on Journal Socket (/dev/log).
+[    0.225039] systemd[1]: Listening on Journal Socket (/dev/log).
 [  OK  ] Listening on Journal Socket (/dev/log).
-[    0.184730] systemd[1]: Listening on Journal Socket.
+[    0.225801] systemd[1]: Listening on Journal Socket.
 [  OK  ] Listening on Journal Socket.
-[    0.185635] systemd[1]: Listening on udev Control Socket.
+[    0.226610] systemd[1]: Listening on udev Control Socket.
 [  OK  ] Listening on udev Control Socket.
-[    0.186362] systemd[1]: Listening on udev Kernel Socket.
+[    0.227317] systemd[1]: Listening on udev Kernel Socket.
 [  OK  ] Listening on udev Kernel Socket.
-[    0.187062] systemd[1]: Reached target Socket Units.
+[    0.227990] systemd[1]: Reached target Socket Units.
 [  OK  ] Reached target Socket Units.
-[    0.188050] systemd[1]: Mounting Huge Pages File System...
+[    0.228902] systemd[1]: Mounting Huge Pages File System...
          Mounting Huge Pages File System...
-[    0.189110] systemd[1]: Mounting POSIX Message Queue File System...
+[    0.229806] systemd[1]: Mounting POSIX Message Queue File System...
          Mounting POSIX Message Queue File System...
-[    0.190440] systemd[1]: Mounting Kernel Debug File System...
+[    0.230779] systemd[1]: Mounting Kernel Debug File System...
          Mounting Kernel Debug File System...
-[    0.191313] systemd[1]: Condition check resulted in Kernel Trace File System being skipped.
-[    0.192467] systemd[1]: Mounting Temporary Directory /tmp...
+[    0.231465] systemd[1]: Condition check resulted in Kernel Trace File System being skipped.
+[    0.232292] systemd[1]: Mounting Temporary Directory /tmp...
          Mounting Temporary Directory /tmp...
-[    0.194122] systemd[1]: Mounting /var/lib/systemd...
+[    0.233325] systemd[1]: Mounting /var/lib/systemd...
          Mounting /var/lib/systemd...
-[    0.196113] systemd[1]: Starting Journal Service...
+[    0.234609] systemd[1]: Starting Journal Service...
          Starting Journal Service...
-[    0.197099] systemd[1]: Condition check resulted in Create List of Static Device Nodes being skipped.
-[    0.198747] systemd[1]: Starting Load Kernel Module configfs...
+[    0.235203] systemd[1]: Condition check resulted in Create List of Static Device Nodes being skipped.
+[    0.236112] systemd[1]: Starting Load Kernel Module configfs...
          Starting Load Kernel Module configfs...
-[    0.200402] systemd[1]: Starting Load Kernel Module efi_pstore...
+[    0.238049] systemd[1]: Starting Load Kernel Module efi_pstore...
          Starting Load Kernel Module efi_pstore...
-[    0.204922] systemd[1]: Starting Load Kernel Module fuse...
+[    0.239001] systemd[1]: Starting Load Kernel Module fuse...
          Starting Load Kernel Module fuse...
-[    0.205985] systemd[1]: Starting Load Kernel Modules...
+[    0.240588] systemd[1]: Starting Load Kernel Modules...
          Starting Load Kernel Modules...
-[    0.206956] systemd[1]: Starting Remount Root and Kernel File Systems...
+[    0.241458] systemd[1]: Starting Remount Root and Kernel File Systems...
          Starting Remount Root and Kernel File Systems...
-[    0.208276] systemd[1]: Starting Coldplug All udev Devices...
+[    0.245777] systemd[1]: Starting Coldplug All udev Devices...
          Starting Coldplug All udev Devices...
-[    0.209382] systemd[1]: Started Journal Service.
+[    0.247072] systemd[1]: Started Journal Service.
 [  OK  ] Started Journal Service.
 [  OK  ] Mounted Huge Pages File System.
 [  OK  ] Mounted POSIX Message Queue File System.
@@ -284,12 +295,13 @@ Welcome to Ubuntu 22.04.4 LTS!
          Starting Load/Save Random Seed...
          Starting Apply Kernel Variables...
          Starting Create System Users...
+[    0.257678] systemd-journald[118]: Received client request to flush runtime journal.
+[  OK  ] Finished Coldplug All udev Devices.
+[  OK  ] Finished Flush Journal to Persistent Storage.
 [  OK  ] Finished Create System Users.
          Starting Create Static Device Nodes in /dev...
 [  OK  ] Finished Apply Kernel Variables.
-[  OK  ] Finished Coldplug All udev Devices.
 [  OK  ] Finished Create Static Device Nodes in /dev.
-[  OK  ] Finished Flush Journal to Persistent Storage.
 [  OK  ] Reached target Preparation for Local File Systems.
 [  OK  ] Reached target Local File Systems.
          Starting Set Up Additional Binary Formats...
@@ -299,9 +311,9 @@ Welcome to Ubuntu 22.04.4 LTS!
          Mounting Arbitrary Executable File Formats File System...
          Starting Record System Boot/Shutdown in UTMP...
 [  OK  ] Mounted Arbitrary Executable File Formats File System.
-[  OK  ] Started Rule-based Manager for Device Events and Files.
 [  OK  ] Finished Set Up Additional Binary Formats.
 [  OK  ] Finished Record System Boot/Shutdown in UTMP.
+[  OK  ] Started Rule-based Manager for Device Events and Files.
 [  OK  ] Reached target System Initialization.
 [  OK  ] Started Daily Cleanup of Temporary Directories.
 [  OK  ] Reached target Basic System.
@@ -310,17 +322,17 @@ Welcome to Ubuntu 22.04.4 LTS!
          Starting getty on tty2-tty…nd logind are not available...
          Starting OpenBSD Secure Shell server...
          Starting Permit User Sessions...
-[  OK  ] Found device /dev/ttyS0.
-[  OK  ] Finished fcnet.service.
 [  OK  ] Finished Permit User Sessions.
+[  OK  ] Finished fcnet.service.
+[  OK  ] Found device /dev/ttyS0.
+[  OK  ] Finished getty on tty2-tty… and logind are not available.
 [  OK  ] Started Getty on tty1.
 [  OK  ] Started Getty on tty2.
 [  OK  ] Started Getty on tty3.
-[  OK  ] Started Serial Getty on ttyS0.
-[  OK  ] Finished getty on tty2-tty… and logind are not available.
 [  OK  ] Started Getty on tty4.
 [  OK  ] Started Getty on tty5.
 [  OK  ] Started Getty on tty6.
+[  OK  ] Started Serial Getty on ttyS0.
 [  OK  ] Reached target Login Prompts.
 [  OK  ] Finished Load/Save Random Seed.
 [  OK  ] Started OpenBSD Secure Shell server.
@@ -328,3 +340,13 @@ Welcome to Ubuntu 22.04.4 LTS!
 [  OK  ] Reached target Graphical Interface.
          Starting Record Runlevel Change in UTMP...
 [  OK  ] Finished Record Runlevel Change in UTMP.
+
+Ubuntu 22.04.4 LTS ubuntu-fc-uvm ttyS0
+
+ubuntu-fc-uvm login: root (automatic login)
+
+Welcome to Ubuntu 22.04.4 LTS (GNU/Linux 5.10.219 aarch64)
+
+ * Documentation:  https://help.ubuntu.com
+ * Management:     https://landscape.canonical.com
+ * Support:        https://ubuntu.com/pro

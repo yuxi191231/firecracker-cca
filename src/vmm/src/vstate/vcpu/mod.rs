@@ -193,9 +193,7 @@ impl Vcpu {
         info!("Vcpu::new");
         let (event_sender, event_receiver) = channel();
         let (response_sender, response_receiver) = channel();
-        info!("KvmVcpu::new");
         let kvm_vcpu = KvmVcpu::new(index, vm).unwrap();
-        info!("Vcpu::new");
         Ok(Vcpu {
             exit_evt,
             vm_fd: vm.fd(),

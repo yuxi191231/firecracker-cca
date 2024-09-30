@@ -125,7 +125,6 @@ use utils::terminal::Terminal;
 use utils::u64_to_usize;
 use vstate::vcpu::{self, KvmVcpuConfigureError, StartThreadedError, VcpuSendEventError};
 
-use arch::aarch64::virtcca::{ArmRmeConfig, CCA};
 use crate::arch::DeviceType;
 use crate::cpu_config::templates::CpuConfiguration;
 #[cfg(target_arch = "x86_64")]
@@ -203,14 +202,6 @@ pub enum VmmError {
     #[cfg(target_arch = "aarch64")]
     /// Invalid command line error.
     Cmdline,
-    /// Error setting up CCA
-    // #[cfg(target_arch = "x86_64")]
-    //#[error("Error setting up CCA boot: {0}")]
-    CCASetup(arch::aarch64::virtcca::CCAError),
-    /// Error finishing up CCA
-    //#[cfg(target_arch = "x86_64")]
-    //#[error("Error finishihng CCA boot: {0}")]
-    CCAFinish(arch::aarch64::virtcca::CCAError),
     /// Device manager error: {0}
     DeviceManager(device_manager::mmio::MmioError),
     /// Error getting the KVM dirty bitmap. {0}
@@ -328,7 +319,6 @@ pub struct Vmm {
     #[cfg(target_arch = "x86_64")]
     pio_device_manager: PortIODeviceManager,
     acpi_device_manager: ACPIDeviceManager,
-    cca: Option<CCA>,
 }
 
 impl Vmm {
@@ -701,34 +691,6 @@ impl Vmm {
             })
             .map_err(VmmError::DeviceManager)
     }
-
-    /// Initializes CCA
-    pub fn setup_cca(&mut self, realm_config: &ArmRmeConfig) -> Result<(), VmmError> {
-        info!("impl Vmm setup_cca");
-        if let Some(cca) = self.cca.as_mut() {
-            info!("realm_config: {:?}", realm_config);
-            cca.arm_rme_realm_configure(&realm_config)
-                .map_err(|err| VmmError::CCASetup(err))?;
-
-            cca
-                .arm_rme_realm_create()
-                .map_err(|err| VmmError::CCASetup(err))?;
-        } else {
-            info!("CCA is not available!");
-        }
-        Ok(())
-    }
-
-    /// Finishes CCA boot
-    pub fn finish_cca(&mut self) -> Result<(), VmmError> {
-        if let Some(cca) = self.cca.as_mut() {
-            cca.arm_rme_realm_finalize()
-                .map_err(|err| VmmError::CCAFinish(err))?;
-        } else {
-            info!("CCA is not available!");
-        }
-        Ok(())
-    }   
 
     /// Returns a reference to the balloon device if present.
     pub fn balloon_config(&self) -> Result<BalloonConfig, BalloonError> {

@@ -11,8 +11,6 @@ pub mod layout;
 pub mod regs;
 /// Helper methods for VcpuFd.
 pub mod vcpu;
-/// Logic for virtCCA cVM
-pub mod virtcca;
 
 use std::cmp::min;
 use std::collections::HashMap;

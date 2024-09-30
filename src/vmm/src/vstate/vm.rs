@@ -5,15 +5,28 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the THIRD-PARTY file.
 
+use crate::logger::info;
 use std::sync::Arc;
 #[cfg(target_arch = "x86_64")]
 use std::fmt;
+use std::fmt::Display;
+use thiserror::Error;
 
 #[cfg(target_arch = "x86_64")]
 use kvm_bindings::{
     kvm_clock_data, kvm_irqchip, kvm_pit_config, kvm_pit_state2, CpuId, MsrList,
     KVM_CLOCK_TSC_STABLE, KVM_IRQCHIP_IOAPIC, KVM_IRQCHIP_PIC_MASTER, KVM_IRQCHIP_PIC_SLAVE,
     KVM_MAX_CPUID_ENTRIES, KVM_PIT_SPEAKER_DUMMY,
+};
+use kvm_bindings::{
+    kvm_enable_cap,
+    kvm_cap_arm_rme_config_item, kvm_cap_arm_rme_init_ipa_args,
+    kvm_cap_arm_rme_populate_realm_args, KVM_ARM_RME_POPULATE_FLAGS_MEASURE, KVM_ARM_VCPU_REC,
+    KVM_CAP_ARM_RME, KVM_CAP_ARM_RME_ACTIVATE_REALM, KVM_CAP_ARM_RME_CFG_HASH_ALGO,
+    KVM_CAP_ARM_RME_CFG_RPV, KVM_CAP_ARM_RME_CONFIG_REALM, KVM_CAP_ARM_RME_CREATE_RD,
+    KVM_CAP_ARM_RME_INIT_IPA_REALM, KVM_CAP_ARM_RME_MEASUREMENT_ALGO_SHA256,
+    KVM_CAP_ARM_RME_MEASUREMENT_ALGO_SHA512, KVM_CAP_ARM_RME_POPULATE_REALM,
+    KVM_CAP_ARM_RME_RPV_SIZE,
 };
 use kvm_bindings::{kvm_userspace_memory_region, KVM_API_VERSION, KVM_MEM_LOG_DIRTY_PAGES};
 use kvm_ioctls::{Kvm, VmFd};
@@ -109,6 +122,49 @@ pub enum RestoreStateError {
     VmError(VmError),
 }
 
+#[derive(Debug)]
+pub struct ArmRmeConfig<'a> {
+    pub measurement_algo: Option<&'a str>,
+    pub personalization_value: Option<&'a str>,
+}
+
+#[derive(Debug, Error)]
+/// CCA platform errors
+pub enum CCAError {
+    ConfigRealm,
+    CreateRealm,
+    PopulateRealm,
+    ActivateRealm,
+    ConfigRealmRPV,
+    ConfigRealmHashAlgo,
+    InvalidErrorCode,
+    FinalizeRealm,
+    Errno(i32),
+}
+
+impl Display for CCAError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+impl From<u32> for CCAError {
+    fn from(code: u32) -> Self {
+        match code {
+            0x01 => Self::ConfigRealm,
+            0x02 => Self::CreateRealm,
+            0x03 => Self::PopulateRealm,
+            0x04 => Self::ActivateRealm,
+            0x05 => Self::ConfigRealmRPV,
+            0x06 => Self::ConfigRealmHashAlgo,
+            0x07 => Self::FinalizeRealm,
+            _ => Self::InvalidErrorCode,
+        }
+    }
+}
+
+pub type CCAResult<T> = std::result::Result<T, CCAError>;
+
 /// A wrapper around creating and using a VM.
 #[derive(Debug)]
 pub struct Vm {
@@ -149,7 +205,7 @@ impl Vm {
 
         let max_memslots = kvm.get_nr_memslots();
         // Create fd for interacting with kvm-vm specific functions.
-        let vm_fd = Arc::new(kvm.create_vm().map_err(VmError::VmFd)?);
+        let vm_fd: Arc<VmFd> = Arc::new(kvm.create_vm().map_err(VmError::VmFd)?);
         // let vm_fd = kvm.create_vm().map_err(VmError::VmFd)?;
 
         #[cfg(target_arch = "aarch64")]
@@ -259,6 +315,145 @@ impl Vm {
     pub fn fd(&self) -> Arc<VmFd> {
         self.fd.clone()
     }
+
+    // Configure the Realm and create the Realm Descriptor
+    pub fn arm_rme_realm_create(&self, realm_config: &ArmRmeConfig) -> CCAResult<()> {
+        info!("into arm_rme_realm_create()");
+        if let Some(rpv) = realm_config.personalization_value {
+            info!("000");
+            
+            let rpv_bytes =
+                hex::decode(rpv).map_err(|_| CCAError::ConfigRealm)?;
+            info!("rpv_bytes is {:?}", rpv_bytes);
+            
+            if rpv_bytes.len() > KVM_CAP_ARM_RME_RPV_SIZE as usize {
+                return Err(CCAError::ConfigRealm);
+            }
+
+            info!("111");
+            let mut cfg = kvm_cap_arm_rme_config_item {
+                cfg: KVM_CAP_ARM_RME_CFG_RPV,
+                ..Default::default()
+            };
+            info!("222 cfg is {:?}", cfg);
+
+            // Fill the first few bytes. The RPV is zero-padded on the right
+            for (i, b) in rpv_bytes.into_iter().enumerate() {
+                // SAFETY: accessing a union field in a valid structure
+                unsafe {
+                    cfg.__bindgen_anon_1.__bindgen_anon_1.rpv[i] = b;
+                }
+            }
+            info!("333");
+            let cap = kvm_enable_cap {
+                cap: KVM_CAP_ARM_RME,
+                args: [
+                    KVM_CAP_ARM_RME_CONFIG_REALM as u64,
+                    &cfg as *const _ as u64,
+                    0,
+                    0,
+                ],
+                ..Default::default()
+            };
+
+            info!("cap is {:?}", cap);
+            self.fd
+                .enable_cap(&cap)
+                .map_err(|_| CCAError::ConfigRealm);
+        }
+        info!("aaaaaaaaaaaaaaa");
+        let algo = match &realm_config.measurement_algo {
+            Some("sha256") => KVM_CAP_ARM_RME_MEASUREMENT_ALGO_SHA256,
+            Some("sha512") => KVM_CAP_ARM_RME_MEASUREMENT_ALGO_SHA512,
+            Some(_) => {
+                return Err(CCAError::ConfigRealm)
+            }
+            // Pick a default algorithm to make the life of verifiers easier
+            None => KVM_CAP_ARM_RME_MEASUREMENT_ALGO_SHA512,
+        };
+
+        let mut cfg = kvm_cap_arm_rme_config_item {
+            cfg: KVM_CAP_ARM_RME_CFG_HASH_ALGO,
+            ..Default::default()
+        };
+        cfg.__bindgen_anon_1.__bindgen_anon_2.hash_algo = algo;
+
+        let cap = kvm_enable_cap {
+            cap: KVM_CAP_ARM_RME,
+            args: [
+                KVM_CAP_ARM_RME_CONFIG_REALM as u64,
+                &cfg as *const _ as u64,
+                0,
+                0,
+            ],
+            ..Default::default()
+        };
+        self.fd
+            .enable_cap(&cap)
+            .map_err(|_| CCAError::ConfigRealm);
+
+        let cap = kvm_enable_cap {
+            cap: KVM_CAP_ARM_RME,
+            args: [KVM_CAP_ARM_RME_CREATE_RD as u64, 0, 0, 0],
+            ..Default::default()
+        };
+        info!("self.fd is {:?}", self.fd);
+        info!("cfg is {:?}", cap);
+        self.fd
+            .enable_cap(&cap)
+            .map_err(|_| CCAError::CreateRealm)
+    }
+
+    // Register guest RAM regions to be initialized by the Realm
+    pub fn arm_rme_realm_populate(&self, addr: u64, size: u64, populate: bool) -> CCAResult<()> {
+        info!("into arm_rme_realm_populate()");
+        let mut cap = kvm_enable_cap {
+            cap: KVM_CAP_ARM_RME,
+            ..Default::default()
+        };
+
+        let aligned_addr = addr & !0xfff;
+        let aligned_size = (size + 0xfff) & !0xfff;
+
+        let (cmd, argp) = if populate {
+            let arg = kvm_cap_arm_rme_populate_realm_args {
+                populate_ipa_base: aligned_addr,
+                populate_ipa_size: aligned_size,
+                flags: KVM_ARM_RME_POPULATE_FLAGS_MEASURE,
+                ..Default::default()
+            };
+            (KVM_CAP_ARM_RME_POPULATE_REALM, &arg as *const _ as u64)
+        } else {
+            let arg = kvm_cap_arm_rme_init_ipa_args {
+                init_ipa_base: aligned_addr,
+                init_ipa_size: aligned_size,
+                ..Default::default()
+            };
+            (KVM_CAP_ARM_RME_INIT_IPA_REALM, &arg as *const _ as u64)
+        };
+
+        cap.args[0] = cmd as u64;
+        cap.args[1] = argp;
+
+        self.fd
+            .enable_cap(&cap)
+            .map_err(|_| CCAError::PopulateRealm)
+    }
+
+    // Finalize the configuration of the Realm
+    pub fn arm_rme_realm_finalize(&self) -> CCAResult<()> {
+        info!("into arm_rme_realm_finalize()");
+        let cap = kvm_enable_cap {
+            cap: KVM_CAP_ARM_RME,
+            args: [KVM_CAP_ARM_RME_ACTIVATE_REALM as u64, 0, 0, 0],
+            ..Default::default()
+        };
+        self.fd
+            .enable_cap(&cap)
+            .map_err(|_| CCAError::ActivateRealm)
+    }
+
+
 }
 
 #[cfg(target_arch = "aarch64")]

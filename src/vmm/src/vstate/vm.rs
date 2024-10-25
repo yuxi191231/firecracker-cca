@@ -21,14 +21,17 @@ use kvm_bindings::{
 use kvm_bindings::{
     kvm_enable_cap,
     kvm_cap_arm_rme_config_item, kvm_cap_arm_rme_init_ipa_args,
-    kvm_cap_arm_rme_populate_realm_args, KVM_ARM_RME_POPULATE_FLAGS_MEASURE, KVM_ARM_VCPU_REC,
+    kvm_cap_arm_rme_populate_realm_args, KVM_ARM_RME_POPULATE_FLAGS_MEASURE,
     KVM_CAP_ARM_RME, KVM_CAP_ARM_RME_ACTIVATE_REALM, KVM_CAP_ARM_RME_CFG_HASH_ALGO,
     KVM_CAP_ARM_RME_CFG_RPV, KVM_CAP_ARM_RME_CONFIG_REALM, KVM_CAP_ARM_RME_CREATE_RD,
     KVM_CAP_ARM_RME_INIT_IPA_REALM, KVM_CAP_ARM_RME_MEASUREMENT_ALGO_SHA256,
     KVM_CAP_ARM_RME_MEASUREMENT_ALGO_SHA512, KVM_CAP_ARM_RME_POPULATE_REALM,
     KVM_CAP_ARM_RME_RPV_SIZE,
 };
-use kvm_bindings::{kvm_userspace_memory_region, KVM_API_VERSION, KVM_MEM_LOG_DIRTY_PAGES};
+use kvm_bindings::{kvm_userspace_memory_region, kvm_userspace_memory_region2,
+    kvm_create_guest_memfd, kvm_memory_attributes,
+    KVM_MEMORY_ATTRIBUTE_PRIVATE, KVM_MEMORY_EXIT_FLAG_PRIVATE, KVM_MEM_GUEST_MEMFD,
+    KVM_API_VERSION, KVM_MEM_LOG_DIRTY_PAGES};
 use kvm_ioctls::{Kvm, VmFd};
 use serde::{Deserialize, Serialize};
 #[cfg(target_arch = "x86_64")]
@@ -138,6 +141,7 @@ pub enum CCAError {
     ConfigRealmRPV,
     ConfigRealmHashAlgo,
     InvalidErrorCode,
+    RecFinalize,
     FinalizeRealm,
     Errno(i32),
 }
@@ -157,7 +161,8 @@ impl From<u32> for CCAError {
             0x04 => Self::ActivateRealm,
             0x05 => Self::ConfigRealmRPV,
             0x06 => Self::ConfigRealmHashAlgo,
-            0x07 => Self::FinalizeRealm,
+            0x07 => Self::RecFinalize,
+            0x08 => Self::FinalizeRealm,
             _ => Self::InvalidErrorCode,
         }
     }
@@ -320,7 +325,6 @@ impl Vm {
     pub fn arm_rme_realm_create(&self, realm_config: &ArmRmeConfig) -> CCAResult<()> {
         info!("into arm_rme_realm_create()");
         if let Some(rpv) = realm_config.personalization_value {
-            info!("000");
             
             let rpv_bytes =
                 hex::decode(rpv).map_err(|_| CCAError::ConfigRealm)?;
@@ -330,12 +334,10 @@ impl Vm {
                 return Err(CCAError::ConfigRealm);
             }
 
-            info!("111");
             let mut cfg = kvm_cap_arm_rme_config_item {
                 cfg: KVM_CAP_ARM_RME_CFG_RPV,
                 ..Default::default()
             };
-            info!("222 cfg is {:?}", cfg);
 
             // Fill the first few bytes. The RPV is zero-padded on the right
             for (i, b) in rpv_bytes.into_iter().enumerate() {
@@ -344,7 +346,7 @@ impl Vm {
                     cfg.__bindgen_anon_1.__bindgen_anon_1.rpv[i] = b;
                 }
             }
-            info!("333");
+
             let cap = kvm_enable_cap {
                 cap: KVM_CAP_ARM_RME,
                 args: [
@@ -356,12 +358,11 @@ impl Vm {
                 ..Default::default()
             };
 
-            info!("cap is {:?}", cap);
             self.fd
                 .enable_cap(&cap)
                 .map_err(|_| CCAError::ConfigRealm);
         }
-        info!("aaaaaaaaaaaaaaa");
+
         let algo = match &realm_config.measurement_algo {
             Some("sha256") => KVM_CAP_ARM_RME_MEASUREMENT_ALGO_SHA256,
             Some("sha512") => KVM_CAP_ARM_RME_MEASUREMENT_ALGO_SHA512,
@@ -397,8 +398,7 @@ impl Vm {
             args: [KVM_CAP_ARM_RME_CREATE_RD as u64, 0, 0, 0],
             ..Default::default()
         };
-        info!("self.fd is {:?}", self.fd);
-        info!("cfg is {:?}", cap);
+
         self.fd
             .enable_cap(&cap)
             .map_err(|_| CCAError::CreateRealm)

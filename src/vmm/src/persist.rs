@@ -10,6 +10,7 @@ use std::os::unix::io::AsRawFd;
 use std::os::unix::net::UnixStream;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
+use std::collections::BTreeMap;
 
 use seccompiler::BpfThreadMap;
 use semver::Version;
@@ -465,11 +466,13 @@ pub fn restore_from_snapshot(
         .map_err(RestoreFromSnapshotGuestMemoryError::Uffd)?,
     };
     let cca_enabled = vm_resources.cca.is_some();
+    let boot_data = BTreeMap::new();
     builder::build_microvm_from_snapshot(
         instance_info,
         event_manager,
         microvm_state,
         guest_memory,
+        boot_data,
         uffd,
         seccomp_filters,
         vm_resources,

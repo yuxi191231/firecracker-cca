@@ -8,6 +8,7 @@ use std::convert::TryFrom;
 use std::fmt::Debug;
 use std::io::{self, Seek, SeekFrom};
 use std::sync::{Arc, Mutex};
+use std::borrow::Borrow;
 use crate::info;
 
 use crate::vstate::vm::{ArmRmeConfig, CCAError};
@@ -69,7 +70,8 @@ use crate::vmm_config::machine_config::{VmConfig, VmConfigError};
 use crate::vstate::memory::{GuestAddress, GuestMemory, GuestMemoryExtension, GuestMemoryMmap};
 use crate::vstate::vcpu::{Vcpu, VcpuConfig, VcpuError};
 use crate::vstate::vm::Vm;
-use crate::{device_manager, EventManager, Vmm, VmmError};
+use crate::{device_manager, EventManager, Vmm, VmmError, GuestBootDataRegion};
+use crate::BTreeMap;
 
 /// Errors associated with starting the instance.
 #[derive(Debug, thiserror::Error, displaydoc::Display)]
@@ -130,6 +132,8 @@ pub enum StartMicrovmError {
     /// Error configuring ACPI: {0}
     #[cfg(target_arch = "x86_64")]
     Acpi(#[from] crate::acpi::AcpiError),
+    /// BootRegionOverlaps
+    BootRegionOverlaps,
 }
 
 /// It's convenient to automatically convert `linux_loader::cmdline::Error`s
@@ -145,6 +149,7 @@ fn create_vmm_and_vcpus(
     instance_info: &InstanceInfo,
     event_manager: &mut EventManager,
     guest_memory: GuestMemoryMmap,
+    boot_data: BTreeMap<GuestAddress, GuestBootDataRegion>,
     uffd: Option<Uffd>,
     track_dirty_pages: bool,
     vcpu_count: u8,
@@ -222,6 +227,7 @@ fn create_vmm_and_vcpus(
         shutdown_exit_code: None,
         vm,
         guest_memory,
+        boot_data,
         uffd,
         vcpus_handles: Vec::new(),
         vcpus_exit_evt,
@@ -290,19 +296,21 @@ pub fn build_microvm_for_boot(
         )
         .map_err(StartMicrovmError::GuestMemory)?
     };
+    let mut boot_data = BTreeMap::new();
 
-    let entry_addr = load_kernel(boot_config, &guest_memory)?;
-    let initrd = load_initrd_from_config(boot_config, &guest_memory)?;
+    let initrd = load_initrd_from_config(boot_config, &guest_memory, &mut boot_data)?;
+    let entry_addr = load_kernel(boot_config, &guest_memory, &mut boot_data)?;
     // Clone the command-line so that a failed boot doesn't pollute the original.
     #[allow(unused_mut)]
     let mut boot_cmdline = boot_config.cmdline.clone();
 
-    let cpu_template = vm_resources.vm_config.cpu_template.get_cpu_template()?;
+    let cpu_template: std::borrow::Cow<'_, CustomCpuTemplate> = vm_resources.vm_config.cpu_template.get_cpu_template()?;
 
     let (mut vmm, mut vcpus) = create_vmm_and_vcpus(
         instance_info,
         event_manager,
         guest_memory,
+        boot_data,
         None,
         track_dirty_pages,
         vm_resources.vm_config.vcpu_count,
@@ -327,6 +335,16 @@ pub fn build_microvm_for_boot(
         vmm.vm
            .arm_rme_realm_create(&arm_rme_config)
            .map_err(|_| CCAError::CreateRealm);
+
+        for (addr, data) in get_boot_data(&vmm.boot_data) {
+            info!(
+                "RME: init RAM addr 0x{:x} size 0x{:x} populate {}",
+                addr.0, data.size, data.populate
+            );
+            vmm.vm
+                .arm_rme_realm_populate(addr.0, data.size as u64, data.populate)
+                .map_err(|_| CCAError::PopulateRealm);
+        }
     }
 
     // The boot timer device needs to be the first device attached in order
@@ -360,12 +378,12 @@ pub fn build_microvm_for_boot(
     if let Some(entropy) = vm_resources.entropy.get() {
         attach_entropy_device(&mut vmm, &mut boot_cmdline, entropy, event_manager)?;
     }
-    info!("hello1");
+    
     #[cfg(target_arch = "aarch64")]
     attach_legacy_devices_aarch64(event_manager, &mut vmm, &mut boot_cmdline).map_err(Internal)?;
 
     attach_vmgenid_device(&mut vmm)?;
-    info!("hello2");
+    
     configure_system_for_boot(
         &mut vmm,
         vcpus.as_mut(),
@@ -375,13 +393,17 @@ pub fn build_microvm_for_boot(
         &initrd,
         boot_cmdline,
     )?;
-    info!("hello3");
+
     if cca_enabled {
+        for vcpu in &vcpus {
+            vcpu.rec_finalize();
+        }
+
         vmm.vm
             .arm_rme_realm_finalize()
             .map_err(|_| CCAError::FinalizeRealm);
     }
-    info!("hello4");
+    
     // Move vcpus to their own threads and start their state machine in the 'Paused' state.
     vmm.start_vcpus(
         vcpus,
@@ -392,7 +414,7 @@ pub fn build_microvm_for_boot(
     )
     .map_err(VmmError::VcpuStart)
     .map_err(Internal)?;
-    info!("hello5");
+    
     // Load seccomp filters for the VMM thread.
     // Execution panics if filters cannot be loaded, use --no-seccomp if skipping filters
     // altogether is the desired behaviour.
@@ -404,7 +426,7 @@ pub fn build_microvm_for_boot(
     )
     .map_err(VmmError::SeccompFilters)
     .map_err(Internal)?;
-    info!("hello6");
+    
     let vmm = Arc::new(Mutex::new(vmm));
     event_manager.add_subscriber(vmm.clone());
 
@@ -486,6 +508,7 @@ pub fn build_microvm_from_snapshot(
     event_manager: &mut EventManager,
     microvm_state: MicrovmState,
     guest_memory: GuestMemoryMmap,
+    boot_data: BTreeMap<GuestAddress, GuestBootDataRegion>,
     uffd: Option<Uffd>,
     seccomp_filters: &BpfThreadMap,
     vm_resources: &mut VmResources,
@@ -497,6 +520,7 @@ pub fn build_microvm_from_snapshot(
         instance_info,
         event_manager,
         guest_memory.clone(),
+        boot_data,
         uffd,
         vm_resources.vm_config.track_dirty_pages,
         vm_resources.vm_config.vcpu_count,
@@ -600,6 +624,7 @@ pub fn build_microvm_from_snapshot(
 fn load_kernel(
     boot_config: &BootConfig,
     guest_memory: &GuestMemoryMmap,
+    boot_data: &mut BTreeMap<GuestAddress, GuestBootDataRegion>
 ) -> Result<GuestAddress, StartMicrovmError> {
     let mut kernel_file = boot_config
         .kernel_file
@@ -624,18 +649,30 @@ fn load_kernel(
     )
     .map_err(StartMicrovmError::KernelLoader)?;
 
-    Ok(entry_addr.kernel_load)
+    // 处理加载结果
+    let file_size = entry_addr.kernel_load_end - entry_addr.kernel_load.0;
+    let bss_addr = (entry_addr.kernel_load_end + 0xfff) & !0xfff; // 计算 BSS 地址
+    let bss_size = entry_addr.kernel_end - bss_addr; // 计算 BSS 大小
+
+    // 记录内核加载数据
+    log_boot_data(boot_data, entry_addr.kernel_load, file_size as usize, true);
+    log_boot_data(boot_data, GuestAddress(bss_addr), bss_size as usize, false);
+
+    Ok(entry_addr.kernel_load) // 返回内核加载地址
 }
 
 fn load_initrd_from_config(
     boot_cfg: &BootConfig,
     vm_memory: &GuestMemoryMmap,
+    boot_data: &mut BTreeMap<GuestAddress, GuestBootDataRegion>
 ) -> Result<Option<InitrdConfig>, StartMicrovmError> {
     use self::StartMicrovmError::InitrdRead;
+    info!("into load_initrd_from_config");
 
     Ok(match &boot_cfg.initrd_file {
         Some(f) => Some(load_initrd(
             vm_memory,
+            boot_data,
             &mut f.try_clone().map_err(InitrdRead)?,
         )?),
         None => None,
@@ -650,6 +687,7 @@ fn load_initrd_from_config(
 /// Returns the result of initrd loading
 fn load_initrd<F>(
     vm_memory: &GuestMemoryMmap,
+    boot_data: &mut BTreeMap<GuestAddress, GuestBootDataRegion>,
     image: &mut F,
 ) -> Result<InitrdConfig, StartMicrovmError>
 where
@@ -683,6 +721,8 @@ where
     image
         .read_exact_volatile(&mut slice)
         .map_err(|_| InitrdLoad)?;
+
+    log_boot_data(boot_data, GuestAddress(address), size, true);
 
     Ok(InitrdConfig {
         address: GuestAddress(address),
@@ -1051,6 +1091,28 @@ pub(crate) fn set_stdout_nonblocking() {
     }
 }
 
+/// Add a boot data region
+pub fn log_boot_data(
+    boot_data: &mut BTreeMap<GuestAddress, GuestBootDataRegion>,
+    addr: GuestAddress,
+    size: usize,
+    populate: bool,
+) -> Result<(), StartMicrovmError> {
+    let region = GuestBootDataRegion { size, populate };
+    if boot_data.insert(addr, region).is_some() {
+        Err(StartMicrovmError::BootRegionOverlaps)
+    } else {
+        Ok(())
+    }
+}
+    
+/// Iterator on the sorted boot data list
+pub fn get_boot_data(
+    boot_data: &BTreeMap<GuestAddress, GuestBootDataRegion>
+) -> std::collections::btree_map::Iter<GuestAddress, GuestBootDataRegion> {
+    boot_data.borrow().iter()
+}
+
 #[cfg(test)]
 pub mod tests {
     use std::io::Write;
@@ -1173,6 +1235,7 @@ pub mod tests {
             shutdown_exit_code: None,
             vm,
             guest_memory,
+            boot_data,
             uffd: None,
             vcpus_handles: Vec::new(),
             vcpus_exit_evt,

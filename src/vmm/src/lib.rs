@@ -112,6 +112,7 @@ use std::os::unix::io::AsRawFd;
 use std::sync::mpsc::RecvTimeoutError;
 use std::sync::{Arc, Barrier, Mutex};
 use std::time::Duration;
+use std::collections::BTreeMap;
 
 use device_manager::acpi::ACPIDeviceManager;
 use device_manager::resources::ResourceAllocator;
@@ -143,7 +144,7 @@ use crate::rate_limiter::BucketUpdate;
 use crate::snapshot::Persist;
 use crate::vmm_config::instance_info::{InstanceInfo, VmState};
 use crate::vstate::memory::{
-    GuestMemory, GuestMemoryExtension, GuestMemoryMmap, GuestMemoryRegion,
+    GuestAddress, GuestMemory, GuestMemoryExtension, GuestMemoryMmap, GuestMemoryRegion,
 };
 use crate::vstate::vcpu::VcpuState;
 pub use crate::vstate::vcpu::{Vcpu, VcpuConfig, VcpuEvent, VcpuHandle, VcpuResponse};
@@ -304,6 +305,9 @@ pub struct Vmm {
     // Guest VM core resources.
     vm: Vm,
     guest_memory: GuestMemoryMmap,
+    // A sorted list of guest memory regions that contain data at boot
+    pub boot_data: BTreeMap<GuestAddress, GuestBootDataRegion>,
+
     // Save UFFD in order to keep it open in the Firecracker process, as well.
     // Since this field is never read again, we need to allow `dead_code`.
     #[allow(dead_code)]
@@ -319,6 +323,14 @@ pub struct Vmm {
     #[cfg(target_arch = "x86_64")]
     pio_device_manager: PortIODeviceManager,
     acpi_device_manager: ACPIDeviceManager,
+}
+
+#[derive(Debug)]
+pub struct GuestBootDataRegion {
+    /// Size of the region
+    pub size: usize,
+    /// Is it populated with data, or is it BSS
+    pub populate: bool,
 }
 
 impl Vmm {

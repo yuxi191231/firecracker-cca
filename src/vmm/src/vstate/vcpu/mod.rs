@@ -11,7 +11,7 @@ use std::sync::mpsc::{channel, Receiver, Sender, TryRecvError};
 use std::sync::{Arc, Barrier};
 use std::{fmt, io, thread};
 
-use kvm_bindings::{KVM_SYSTEM_EVENT_RESET, KVM_SYSTEM_EVENT_SHUTDOWN};
+use kvm_bindings::{KVM_SYSTEM_EVENT_RESET, KVM_SYSTEM_EVENT_SHUTDOWN, KVM_ARM_VCPU_REC};
 use kvm_ioctls::{VcpuExit, VmFd};
 use libc::{c_int, c_void, siginfo_t};
 use log::{error, info, warn};
@@ -25,6 +25,7 @@ use crate::cpu_config::templates::{CpuConfiguration, GuestConfigError};
 use crate::logger::{IncMetric, METRICS};
 use crate::vstate::vm::Vm;
 use crate::FcExitCode;
+use crate::vstate::vm::CCAError;
 
 /// Module with aarch64 vCPU implementation.
 #[cfg(target_arch = "aarch64")]
@@ -451,6 +452,15 @@ impl Vcpu {
             }
             emulation_result => handle_kvm_exit(&mut self.kvm_vcpu.peripherals, emulation_result),
         }
+    }
+
+    pub fn rec_finalize(&self) -> Result<(), CCAError> {
+        let feature = KVM_ARM_VCPU_REC as i32;
+        self.kvm_vcpu
+            .fd
+            .vcpu_finalize(&feature);
+        //    .map_err(|_| VcpuError::RecFinalize);
+        Ok(())
     }
 }
 

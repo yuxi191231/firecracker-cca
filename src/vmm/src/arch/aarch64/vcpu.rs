@@ -82,11 +82,11 @@ pub fn setup_boot_regs(
     let kreg_off = offset_of!(kvm_regs, regs);
 
     // Get the register index of the PSTATE (Processor State) register.
-    let pstate = offset_of!(user_pt_regs, pstate) + kreg_off;
-    let id = arm64_core_reg_id!(KVM_REG_SIZE_U64, pstate);
-    vcpufd
-        .set_one_reg(id, &PSTATE_FAULT_BITS_64.to_le_bytes())
-        .map_err(|err| VcpuError::SetOneReg(id, err))?;
+    // let pstate = offset_of!(user_pt_regs, pstate) + kreg_off;
+    // let id = arm64_core_reg_id!(KVM_REG_SIZE_U64, pstate);
+    // vcpufd
+    //     .set_one_reg(id, &PSTATE_FAULT_BITS_64.to_le_bytes())
+    //     .map_err(|err| VcpuError::SetOneReg(id, err))?;
 
     // Other vCPUs are powered off initially awaiting PSCI wakeup.
     if cpu_id == 0 {

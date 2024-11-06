@@ -6,6 +6,7 @@ use std::path::PathBuf;
 use std::sync::mpsc::{channel, Receiver, Sender, TryRecvError};
 use std::sync::{Arc, Mutex};
 use std::thread;
+use crate::info;
 
 use event_manager::{EventOps, Events, MutEventSubscriber, SubscriberOps};
 use seccompiler::BpfThreadMap;
@@ -55,23 +56,27 @@ impl ApiServerAdapter {
         vmm: Arc<Mutex<Vmm>>,
         event_manager: &mut EventManager,
     ) -> Result<(), ApiServerError> {
+        info!("into run_microvm");
         let api_adapter = Arc::new(Mutex::new(Self {
             api_event_fd,
             from_api,
             to_api,
             controller: RuntimeApiController::new(vm_resources, vmm.clone()),
         }));
+        info!("after api_adapter");
         event_manager.add_subscriber(api_adapter);
+        info!("after event_manager add_subscriber");
         loop {
             event_manager
                 .run()
                 .expect("EventManager events driver fatal error");
-
+            info!("after event_manager");
             match vmm.lock().unwrap().shutdown_exit_code() {
                 Some(FcExitCode::Ok) => break,
                 Some(exit_code) => return Err(ApiServerError::MicroVMStoppedWithError(exit_code)),
                 None => continue,
             }
+            info!("after shutdown_exit_code");
         }
         Ok(())
     }
@@ -147,6 +152,7 @@ pub(crate) fn run_with_api(
     mmds_size_limit: usize,
     metadata_json: Option<&str>,
 ) -> Result<(), ApiServerError> {
+    info!("run_with_api");
     // FD to notify of API events. This is a blocking eventfd by design.
     // It is used in the config/pre-boot loop which is a simple blocking loop
     // which only consumes API events.
@@ -228,13 +234,13 @@ pub(crate) fn run_with_api(
         )
         .map_err(ApiServerError::BuildMicroVmError),
     };
-
+    info!("run_with_api after build_microvm_from_json");
     let result = build_result.and_then(|(vm_resources, vmm)| {
         firecracker_metrics
             .lock()
             .expect("Poisoned lock")
             .start(super::metrics::WRITE_METRICS_PERIOD_MS);
-
+        info!("before run_microvm");
         ApiServerAdapter::run_microvm(
             api_event_fd,
             from_api,
@@ -244,7 +250,7 @@ pub(crate) fn run_with_api(
             &mut event_manager,
         )
     });
-
+    info!("run_with_api after run_microvm");
     api_kill_switch.write(1).unwrap();
     // This call to thread::join() should block until the API thread has processed the
     // shutdown-internal and returns from its function.

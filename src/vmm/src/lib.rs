@@ -113,6 +113,7 @@ use std::sync::mpsc::RecvTimeoutError;
 use std::sync::{Arc, Barrier, Mutex};
 use std::time::Duration;
 use std::collections::BTreeMap;
+use std::fs::File;
 
 use device_manager::acpi::ACPIDeviceManager;
 use device_manager::resources::ResourceAllocator;
@@ -307,6 +308,8 @@ pub struct Vmm {
     guest_memory: GuestMemoryMmap,
     // A sorted list of guest memory regions that contain data at boot
     pub boot_data: BTreeMap<GuestAddress, GuestBootDataRegion>,
+    use_guest_memfd: bool,
+    guest_memfds: BTreeMap<u64, File>,
 
     // Save UFFD in order to keep it open in the Firecracker process, as well.
     // Since this field is never read again, we need to allow `dead_code`.
@@ -641,8 +644,9 @@ impl Vmm {
         // The VMM's consumer will need to cache the dirty tracking setting internally. For
         // example, if this function were to be exposed through the VMM controller, the VMM
         // resources should cache the flag.
+        let mut guest_memfds = BTreeMap::new();
         self.vm
-            .set_kvm_memory_regions(&self.guest_memory, enable)
+            .set_kvm_memory_regions(&self.guest_memory, enable, &mut guest_memfds)
             .map_err(VmmError::Vm)
     }
 

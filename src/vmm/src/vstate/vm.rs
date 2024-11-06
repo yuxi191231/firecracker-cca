@@ -11,6 +11,11 @@ use std::sync::Arc;
 use std::fmt;
 use std::fmt::Display;
 use thiserror::Error;
+use crate::BTreeMap;
+use std::fs::File;
+use std::os::fd::FromRawFd;
+use crate::GuestBootDataRegion;
+use crate::vstate::memory::GuestAddress;
 
 #[cfg(target_arch = "x86_64")]
 use kvm_bindings::{
@@ -31,7 +36,9 @@ use kvm_bindings::{
 use kvm_bindings::{kvm_userspace_memory_region, kvm_userspace_memory_region2,
     kvm_create_guest_memfd, kvm_memory_attributes,
     KVM_MEMORY_ATTRIBUTE_PRIVATE, KVM_MEMORY_EXIT_FLAG_PRIVATE, KVM_MEM_GUEST_MEMFD,
-    KVM_API_VERSION, KVM_MEM_LOG_DIRTY_PAGES};
+    KVM_API_VERSION, KVM_MEM_LOG_DIRTY_PAGES, KVM_MEM_READONLY
+};
+use std::os::fd::RawFd;
 use kvm_ioctls::{Kvm, VmFd};
 use serde::{Deserialize, Serialize};
 #[cfg(target_arch = "x86_64")]
@@ -94,6 +101,22 @@ pub enum VmError {
     #[cfg(target_arch = "aarch64")]
     /// Failed to restore the VM's GIC state: {0}
     RestoreGic(crate::arch::aarch64::gic::GicError),
+    /// CreateGuestMemfd
+    CreateGuestMemfd,
+    /// SetMemoryAttributes
+    SetMemoryAttributes,
+}
+
+impl From<VmError> for kvm_ioctls::Error {
+    fn from(err: VmError) -> Self {
+        // 根据 VmError 的不同变体实现转换逻辑
+        // 例如：
+        match err {
+            VmError::CreateGuestMemfd => kvm_ioctls::Error::new(111),
+            // 其他变体处理...
+            _ => kvm_ioctls::Error::new(222),
+        }
+    }
 }
 
 /// Error type for [`Vm::restore_state`]
@@ -123,6 +146,20 @@ pub enum RestoreStateError {
     GicError(crate::arch::aarch64::gic::GicError),
     /// {0}
     VmError(VmError),
+}
+
+/// Attribute of guest pages: private to the guest or shared with the host
+#[derive(Debug, PartialEq)]
+pub enum MemoryAttribute {
+    Private,
+    Shared,
+}
+
+/// Indicate the type of the region on which the memory fault occured
+#[derive(Copy, Clone, Debug)]
+pub enum MemoryFaultType {
+    Private,
+    Shared,
 }
 
 #[derive(Debug)]
@@ -169,6 +206,17 @@ impl From<u32> for CCAError {
 }
 
 pub type CCAResult<T> = std::result::Result<T, CCAError>;
+const KVM_VM_TYPE_ARM_NORMAL: u64 = 0 << 8;
+const KVM_VM_TYPE_ARM_REALM: u64 = 1 << 8;
+
+///
+/// Flags for user memory region
+///
+pub const USER_MEMORY_REGION_READ: u32 = 1;
+pub const USER_MEMORY_REGION_WRITE: u32 = 1 << 1;
+pub const USER_MEMORY_REGION_EXECUTE: u32 = 1 << 2;
+pub const USER_MEMORY_REGION_LOG_DIRTY: u32 = 1 << 3;
+pub const USER_MEMORY_REGION_ADJUSTABLE: u32 = 1 << 4;
 
 /// A wrapper around creating and using a VM.
 #[derive(Debug)]
@@ -210,7 +258,8 @@ impl Vm {
 
         let max_memslots = kvm.get_nr_memslots();
         // Create fd for interacting with kvm-vm specific functions.
-        let vm_fd: Arc<VmFd> = Arc::new(kvm.create_vm().map_err(VmError::VmFd)?);
+        //let vm_fd: Arc<VmFd> = Arc::new(kvm.create_vm().map_err(VmError::VmFd)?);
+        let vm_fd: Arc<VmFd> = Arc::new(kvm.create_vm_with_ipa_size(48 as u32).map_err(VmError::VmFd)?);
         // let vm_fd = kvm.create_vm().map_err(VmError::VmFd)?;
 
         #[cfg(target_arch = "aarch64")]
@@ -274,11 +323,12 @@ impl Vm {
         &self,
         guest_mem: &GuestMemoryMmap,
         track_dirty_pages: bool,
+        guest_memfds: &mut BTreeMap<u64, File>,
     ) -> Result<(), VmError> {
         if guest_mem.num_regions() > self.max_memslots {
             return Err(VmError::NotEnoughMemorySlots);
         }
-        self.set_kvm_memory_regions(guest_mem, track_dirty_pages)?;
+        self.set_kvm_memory_regions(guest_mem, track_dirty_pages, guest_memfds)?;
         #[cfg(target_arch = "x86_64")]
         self.fd
             .set_tss_address(u64_to_usize(crate::arch::x86_64::layout::KVM_TSS_ADDRESS))
@@ -291,29 +341,105 @@ impl Vm {
         &self,
         guest_mem: &GuestMemoryMmap,
         track_dirty_pages: bool,
+        guest_memfds: &mut BTreeMap<u64, File>,
     ) -> Result<(), VmError> {
         let mut flags = 0u32;
         if track_dirty_pages {
+            info!("track_dirty_pages");
             flags |= KVM_MEM_LOG_DIRTY_PAGES;
         }
         guest_mem
             .iter()
             .zip(0u32..)
             .try_for_each(|(region, slot)| {
-                let memory_region = kvm_userspace_memory_region {
-                    slot,
-                    guest_phys_addr: region.start_addr().raw_value(),
-                    memory_size: region.len(),
-                    // It's safe to unwrap because the guest address is valid.
-                    userspace_addr: guest_mem.get_host_address(region.start_addr()).unwrap() as u64,
-                    flags,
-                };
+                info!("region is {:?}", region);
+                //info!("slot is {:?}", slot);
 
-                // SAFETY: Safe because the fd is a valid KVM file descriptor.
-                unsafe { self.fd.set_user_memory_region(memory_region) }
+                let guest_memfd = self.create_guest_memfd(region.len()).map_err(|e| kvm_ioctls::Error::from(e))?;
+                //info!("guest_memfd is {:?}", guest_memfd);
+                
+                let memfd_param = guest_memfd.map(|fd| (fd, 0));
+                //info!("memfd_params is {:?}", memfd_param);
+                
+                if guest_memfd.is_some() {
+                    info!("use region2!");
+                    flags |= KVM_MEM_GUEST_MEMFD;
+                    let (fd, offset) = memfd_param.unwrap();
+                    let guest_memfd = fd as u32;
+                    let guest_memfd_offset = offset;
+                    info!("guest_memfd(fd) is {:?}", guest_memfd);
+                    info!("guest_memfd_offset is {:?}", guest_memfd_offset);
+
+                    let guest_memfd_file = unsafe { File::from_raw_fd(fd) };
+                    if let mfd = guest_memfd_file {
+                        guest_memfds.insert(region.start_addr().raw_value(), mfd);
+                    }
+                    info!("guest_memfds is {:?}", guest_memfds);
+
+                    info!("Creating userspace mapping: {:x} -> {:x} {:x}, slot {}", region.start_addr().raw_value(), region.as_ptr() as u64, region.len(), slot);
+                    
+                    let memory_region = kvm_userspace_memory_region2 {
+                        slot,
+                        flags,
+                        guest_phys_addr: region.start_addr().raw_value(), //gpa
+                        memory_size: region.len(),
+                        // It's safe to unwrap because the guest address is valid.
+                        //userspace_addr: guest_mem.get_host_address(region.start_addr()).unwrap() as u64,
+                        userspace_addr: region.as_ptr() as u64,
+                        guest_memfd_offset,
+                        guest_memfd,
+                        ..Default::default()
+                    };
+                    
+                    info!("before set_user_memory_region2()");
+                    info!("memory_region is {:?}", memory_region);
+                    
+                    // SAFETY: Safe because the fd is a valid KVM file descriptor.
+                    unsafe { self.fd.set_user_memory_region2(memory_region) }
+                } else {
+                    let memory_region = kvm_userspace_memory_region {
+                        slot,
+                        guest_phys_addr: region.start_addr().raw_value(),
+                        memory_size: region.len(),
+                        // It's safe to unwrap because the guest address is valid.
+                        userspace_addr: guest_mem.get_host_address(region.start_addr()).unwrap() as u64,
+                        flags,
+                    };
+
+                    // SAFETY: Safe because the fd is a valid KVM file descriptor.
+                    unsafe { self.fd.set_user_memory_region(memory_region) }
+
+                }
             })
             .map_err(VmError::SetUserMemoryRegion)?;
         Ok(())
+    }
+
+    /// Create a guest memfd
+    fn create_guest_memfd(&self, size: u64) -> Result<Option<RawFd>, VmError> {
+        let create_guest_memfd = kvm_create_guest_memfd {
+            size,
+            flags: 0,
+            ..Default::default()
+        };
+
+        // All these capabilities are required to manage a guest memfd
+        // if !self.check_extension(Cap::UserMemory2) {
+        //     return Err(vm::HypervisorVmError::CreateGuestMemfd(anyhow!(
+        //         "Unsupported KVM_CAP_USER_MEMORY2"
+        //     )));
+        // } else if !self.check_extension(Cap::GuestMemfd) {
+        //     return Err(vm::HypervisorVmError::CreateGuestMemfd(anyhow!(
+        //         "Unsupported KVM_CAP_GUEST_MEMFD"
+        //     )));
+        // }
+        // TODO: private memory attribute cap
+
+        let r = self.fd
+            .create_guest_memfd(create_guest_memfd)
+            .map_err(|_| VmError::CreateGuestMemfd)?;
+
+        Ok(Some(r))
     }
 
     /// Gets a reference to the kvm file descriptor owned by this VM.

@@ -72,6 +72,7 @@ use crate::vstate::vcpu::{Vcpu, VcpuConfig, VcpuError};
 use crate::vstate::vm::Vm;
 use crate::{device_manager, EventManager, Vmm, VmmError, GuestBootDataRegion};
 use crate::BTreeMap;
+//use std::os::fd::RawFd;
 
 /// Errors associated with starting the instance.
 #[derive(Debug, thiserror::Error, displaydoc::Display)]
@@ -157,14 +158,16 @@ fn create_vmm_and_vcpus(
     cca_enabled: bool,
 ) -> Result<(Vmm, Vec<Vcpu>), StartMicrovmError> {
     use self::StartMicrovmError::*;
-
+    let mut guest_memfds = BTreeMap::new();
     // Set up Kvm Vm and register memory regions.
     // Build custom CPU config if a custom template is provided.
     let mut vm = Vm::new(kvm_capabilities)
         .map_err(VmmError::Vm)
         .map_err(StartMicrovmError::Internal)?;
-    vm.memory_init(&guest_memory, track_dirty_pages)
-        .map_err(VmmError::Vm)
+
+    vm.memory_init(&guest_memory, track_dirty_pages, &mut guest_memfds)
+        .map_err(
+            VmmError::Vm)
         .map_err(StartMicrovmError::Internal)?;
 
     let vcpus_exit_evt = EventFd::new(libc::EFD_NONBLOCK)
@@ -221,6 +224,9 @@ fn create_vmm_and_vcpus(
         vcpus
     };
 
+    let use_guest_memfd = cca_enabled;
+    info!("guest_memfds is {:?}", guest_memfds);
+
     let vmm = Vmm {
         events_observer: Some(std::io::stdin()),
         instance_info: instance_info.clone(),
@@ -228,6 +234,8 @@ fn create_vmm_and_vcpus(
         vm,
         guest_memory,
         boot_data,
+        use_guest_memfd,
+        guest_memfds,
         uffd,
         vcpus_handles: Vec::new(),
         vcpus_exit_evt,
@@ -297,6 +305,7 @@ pub fn build_microvm_for_boot(
         .map_err(StartMicrovmError::GuestMemory)?
     };
     let mut boot_data = BTreeMap::new();
+    //let guest_memfd = None;
 
     let initrd = load_initrd_from_config(boot_config, &guest_memory, &mut boot_data)?;
     let entry_addr = load_kernel(boot_config, &guest_memory, &mut boot_data)?;
@@ -311,6 +320,7 @@ pub fn build_microvm_for_boot(
         event_manager,
         guest_memory,
         boot_data,
+        //guest_memfd,
         None,
         track_dirty_pages,
         vm_resources.vm_config.vcpu_count,
@@ -327,7 +337,8 @@ pub fn build_microvm_for_boot(
             //     measurement_algo: vm_resources.cca.as_ref().unwrap().measurement_algo.clone(),
             //     personalization_value: vm_resources.cca.as_ref().unwrap().personalization_value.clone(),
                 measurement_algo: Some("sha512"),
-                personalization_value: Some("11")
+                //personalization_value: Some("11")
+                personalization_value: None
             };
             info!("measurement algo: {:?}", arm_rme_config.measurement_algo);
             info!("personalization value: {:?}", arm_rme_config.personalization_value);
@@ -693,6 +704,7 @@ fn load_initrd<F>(
 where
     F: ReadVolatile + Seek + Debug,
 {
+    info!("into load_initrd()");
     use self::StartMicrovmError::{InitrdLoad, InitrdRead};
 
     let size: usize;
@@ -722,6 +734,7 @@ where
         .read_exact_volatile(&mut slice)
         .map_err(|_| InitrdLoad)?;
 
+    info!("load initrd addr is {:?}, size is {:?}", GuestAddress(address), size);
     log_boot_data(boot_data, GuestAddress(address), size, true);
 
     Ok(InitrdConfig {

@@ -11,7 +11,7 @@ use std::sync::mpsc::{channel, Receiver, Sender, TryRecvError};
 use std::sync::{Arc, Barrier};
 use std::{fmt, io, thread};
 
-use kvm_bindings::{KVM_SYSTEM_EVENT_RESET, KVM_SYSTEM_EVENT_SHUTDOWN, KVM_ARM_VCPU_REC};
+use kvm_bindings::{KVM_MEMORY_EXIT_FLAG_PRIVATE, KVM_SYSTEM_EVENT_RESET, KVM_SYSTEM_EVENT_SHUTDOWN, KVM_ARM_VCPU_REC};
 use kvm_ioctls::{VcpuExit, VmFd};
 use libc::{c_int, c_void, siginfo_t};
 use log::{error, info, warn};
@@ -24,6 +24,7 @@ use utils::sm::StateMachine;
 use crate::cpu_config::templates::{CpuConfiguration, GuestConfigError};
 use crate::logger::{IncMetric, METRICS};
 use crate::vstate::vm::Vm;
+//use crate::vstate::vm::MemoryFaultType;
 use crate::FcExitCode;
 use crate::vstate::vm::CCAError;
 
@@ -518,6 +519,20 @@ fn handle_kvm_exit(
                     VcpuExit::InternalError
                 )))
             }
+            // VcpuExit::MemoryFault(flags, gpa, size) => {
+            //     let priv_flag = KVM_MEMORY_EXIT_FLAG_PRIVATE as u64;
+            //     let fault_type = if (flags & priv_flag) != 0 {
+            //         MemoryFaultType::Private
+            //     } else {
+            //         MemoryFaultType::Shared
+            //     };
+            //     if let Some(vm_ops) = vm_ops {
+            //         return vm_ops
+            //             .memory_fault(fault_type, gpa, size)
+            //             .map(|_| cpu::VmExit::Ignore)
+            //             .map_err(|e| cpu::HypervisorCpuError::RunVcpu(e.into()));
+            //     }
+            // }
             VcpuExit::SystemEvent(event_type, event_flags) => match event_type {
                 KVM_SYSTEM_EVENT_RESET | KVM_SYSTEM_EVENT_SHUTDOWN => {
                     info!(
@@ -563,6 +578,27 @@ fn handle_kvm_exit(
         },
     }
 }
+
+//  /// Handle a memory fault VM exit. At the moment this is a request to
+// /// switch some memory either private->shared or shared->private.
+// pub fn memory_fault(
+//     &mut self,
+//     fault_type: MemoryFaultType,
+//     gpa: u64,
+//     size: u64,
+// ) -> std::result::Result<(), HypervisorVmError> {
+//     for mapping in &self.guest_ram_mappings {
+//         if mapping.gpa >= gpa + size || mapping.gpa + mapping.size < gpa {
+//             continue;
+//         }
+
+//         // Intersect the fault range with this mapping
+//         let base = std::cmp::max(mapping.gpa, gpa);
+//         let end = std::cmp::min(mapping.gpa + mapping.size, gpa + size);
+//         self.memory_fault_range(fault_type, base, end - base, mapping)?;
+//     }
+//     Ok(())
+// }
 
 impl Drop for Vcpu {
     fn drop(&mut self) {

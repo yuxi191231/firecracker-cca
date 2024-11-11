@@ -72,7 +72,6 @@ use crate::vstate::vcpu::{Vcpu, VcpuConfig, VcpuError};
 use crate::vstate::vm::Vm;
 use crate::{device_manager, EventManager, Vmm, VmmError, GuestBootDataRegion};
 use crate::BTreeMap;
-//use std::os::fd::RawFd;
 
 /// Errors associated with starting the instance.
 #[derive(Debug, thiserror::Error, displaydoc::Display)]
@@ -159,13 +158,14 @@ fn create_vmm_and_vcpus(
 ) -> Result<(Vmm, Vec<Vcpu>), StartMicrovmError> {
     use self::StartMicrovmError::*;
     let mut guest_memfds = BTreeMap::new();
+    let mut guest_ram_mappings = Vec::new();
     // Set up Kvm Vm and register memory regions.
     // Build custom CPU config if a custom template is provided.
     let mut vm = Vm::new(kvm_capabilities)
         .map_err(VmmError::Vm)
         .map_err(StartMicrovmError::Internal)?;
 
-    vm.memory_init(&guest_memory, track_dirty_pages, &mut guest_memfds)
+    vm.memory_init(&guest_memory, track_dirty_pages, &mut guest_memfds, &mut guest_ram_mappings)
         .map_err(
             VmmError::Vm)
         .map_err(StartMicrovmError::Internal)?;
@@ -226,13 +226,13 @@ fn create_vmm_and_vcpus(
 
     let use_guest_memfd = cca_enabled;
     info!("guest_memfds is {:?}", guest_memfds);
-
     let vmm = Vmm {
         events_observer: Some(std::io::stdin()),
         instance_info: instance_info.clone(),
         shutdown_exit_code: None,
         vm,
         guest_memory,
+        guest_ram_mappings,
         boot_data,
         use_guest_memfd,
         guest_memfds,
@@ -289,6 +289,7 @@ pub fn build_microvm_for_boot(
     // a single way of backing guest memory for vhost-user and non-vhost-user cases,
     // that would not be worth the effort.
     let guest_memory = if vhost_user_device_used {
+        info!("guest_memory: memfd_backend");
         GuestMemoryMmap::memfd_backed(
             vm_resources.vm_config.mem_size_mib,
             track_dirty_pages,
@@ -296,7 +297,9 @@ pub fn build_microvm_for_boot(
         )
         .map_err(StartMicrovmError::GuestMemory)?
     } else {
+        info!("guest_memory: from_raw_regions");
         let regions = crate::arch::arch_memory_regions(vm_resources.vm_config.mem_size_mib << 20);
+        info!("regions is {:?}", regions);
         GuestMemoryMmap::from_raw_regions(
             &regions,
             track_dirty_pages,
@@ -306,15 +309,20 @@ pub fn build_microvm_for_boot(
     };
     let mut boot_data = BTreeMap::new();
     //let guest_memfd = None;
-
+    //info!("guest_memory 1 is {:?}", &guest_memory);
+    //info!("boot_data 1 is {:?}", &boot_data);
     let initrd = load_initrd_from_config(boot_config, &guest_memory, &mut boot_data)?;
+    //info!("guest_memory 2 is {:?}", &guest_memory);
+    //info!("boot_data 2 is {:?}", &boot_data);
     let entry_addr = load_kernel(boot_config, &guest_memory, &mut boot_data)?;
+    //info!("guest_memory 3 is {:?}", guest_memory);
+    //info!("boot_data 3 is {:?}", &boot_data);
     // Clone the command-line so that a failed boot doesn't pollute the original.
     #[allow(unused_mut)]
     let mut boot_cmdline = boot_config.cmdline.clone();
 
     let cpu_template: std::borrow::Cow<'_, CustomCpuTemplate> = vm_resources.vm_config.cpu_template.get_cpu_template()?;
-
+    let mut boot_data_bak = boot_data.clone();
     let (mut vmm, mut vcpus) = create_vmm_and_vcpus(
         instance_info,
         event_manager,
@@ -327,36 +335,6 @@ pub fn build_microvm_for_boot(
         cpu_template.kvm_capabilities.clone(),
         cca_enabled,
     )?;
-
-    info!("CCA ENABLED?");
-    //let mut kernel_len: u64 = 0;
-    if cca_enabled {
-        info!("CCA ENABLED!");
-        //let cfg = self.config.lock().unwrap();
-            let arm_rme_config = ArmRmeConfig {
-            //     measurement_algo: vm_resources.cca.as_ref().unwrap().measurement_algo.clone(),
-            //     personalization_value: vm_resources.cca.as_ref().unwrap().personalization_value.clone(),
-                measurement_algo: Some("sha512"),
-                //personalization_value: Some("11")
-                personalization_value: None
-            };
-            info!("measurement algo: {:?}", arm_rme_config.measurement_algo);
-            info!("personalization value: {:?}", arm_rme_config.personalization_value);
-
-        vmm.vm
-           .arm_rme_realm_create(&arm_rme_config)
-           .map_err(|_| CCAError::CreateRealm);
-
-        for (addr, data) in get_boot_data(&vmm.boot_data) {
-            info!(
-                "RME: init RAM addr 0x{:x} size 0x{:x} populate {}",
-                addr.0, data.size, data.populate
-            );
-            vmm.vm
-                .arm_rme_realm_populate(addr.0, data.size as u64, data.populate)
-                .map_err(|_| CCAError::PopulateRealm);
-        }
-    }
 
     // The boot timer device needs to be the first device attached in order
     // to maintain the same MMIO address referenced in the documentation
@@ -403,10 +381,39 @@ pub fn build_microvm_for_boot(
         entry_addr,
         &initrd,
         boot_cmdline,
+        &mut boot_data_bak,
     )?;
 
     if cca_enabled {
+        info!("CCA ENABLED!");
+        //let cfg = self.config.lock().unwrap();
+            let arm_rme_config = ArmRmeConfig {
+            //     measurement_algo: vm_resources.cca.as_ref().unwrap().measurement_algo.clone(),
+            //     personalization_value: vm_resources.cca.as_ref().unwrap().personalization_value.clone(),
+                measurement_algo: Some("sha512"),
+                //personalization_value: Some("11")
+                personalization_value: None
+            };
+            info!("measurement algo: {:?}", arm_rme_config.measurement_algo);
+            info!("personalization value: {:?}", arm_rme_config.personalization_value);
+
+        vmm.vm
+           .arm_rme_realm_create(&arm_rme_config)
+           .map_err(|_| CCAError::CreateRealm);
+
+        for (addr, data) in get_boot_data(&boot_data_bak) {
+            info!(
+                "RME: init RAM addr 0x{:x} size 0x{:x} populate {}",
+                addr.0, data.size, data.populate
+            );
+            vmm.vm
+                .arm_rme_realm_populate(addr.0, data.size as u64, data.populate)
+                .map_err(|_| CCAError::PopulateRealm);
+        }
+
+        info!("into vcpu.rec_finalize()");
         for vcpu in &vcpus {
+            info!("vcpu is {:?}", vcpu);
             vcpu.rec_finalize();
         }
 
@@ -836,6 +843,7 @@ pub fn configure_system_for_boot(
     entry_addr: GuestAddress,
     initrd: &Option<InitrdConfig>,
     boot_cmdline: LoaderKernelCmdline,
+    boot_data: & mut BTreeMap<GuestAddress, GuestBootDataRegion>,
 ) -> Result<(), StartMicrovmError> {
     use self::StartMicrovmError::*;
 
@@ -928,7 +936,7 @@ pub fn configure_system_for_boot(
             .map(|cpu| cpu.kvm_vcpu.get_mpidr())
             .collect();
         let cmdline = boot_cmdline.as_cstring()?;
-        crate::arch::aarch64::configure_system(
+        let fdt_len = crate::arch::aarch64::configure_system(
             &vmm.guest_memory,
             cmdline,
             vcpu_mpidr,
@@ -939,6 +947,7 @@ pub fn configure_system_for_boot(
 //          dtb,
         )
         .map_err(ConfigureSystem)?;
+        log_boot_data(boot_data, vm_memory::GuestAddress(crate::arch::aarch64::layout::FDT_START), fdt_len, true);
     }
     Ok(())
 }

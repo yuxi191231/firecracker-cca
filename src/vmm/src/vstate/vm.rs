@@ -14,8 +14,9 @@ use thiserror::Error;
 use crate::BTreeMap;
 use std::fs::File;
 use std::os::fd::FromRawFd;
-use crate::GuestBootDataRegion;
-use crate::vstate::memory::GuestAddress;
+use crate::GuestRamMapping;
+//use crate::GuestBootDataRegion;
+//use crate::vstate::memory::GuestAddress;
 
 #[cfg(target_arch = "x86_64")]
 use kvm_bindings::{
@@ -34,8 +35,7 @@ use kvm_bindings::{
     KVM_CAP_ARM_RME_RPV_SIZE,
 };
 use kvm_bindings::{kvm_userspace_memory_region, kvm_userspace_memory_region2,
-    kvm_create_guest_memfd, kvm_memory_attributes,
-    KVM_MEMORY_ATTRIBUTE_PRIVATE, KVM_MEMORY_EXIT_FLAG_PRIVATE, KVM_MEM_GUEST_MEMFD,
+    kvm_create_guest_memfd, KVM_MEMORY_EXIT_FLAG_PRIVATE, KVM_MEM_GUEST_MEMFD,
     KVM_API_VERSION, KVM_MEM_LOG_DIRTY_PAGES, KVM_MEM_READONLY
 };
 use std::os::fd::RawFd;
@@ -221,7 +221,7 @@ pub const USER_MEMORY_REGION_ADJUSTABLE: u32 = 1 << 4;
 /// A wrapper around creating and using a VM.
 #[derive(Debug)]
 pub struct Vm {
-    fd: Arc<VmFd>,
+    pub fd: Arc<VmFd>,
     max_memslots: usize,
 
     /// Additional capabilities that were specified in cpu template.
@@ -324,11 +324,12 @@ impl Vm {
         guest_mem: &GuestMemoryMmap,
         track_dirty_pages: bool,
         guest_memfds: &mut BTreeMap<u64, File>,
+        guest_ram_mappings: &mut Vec<GuestRamMapping>,
     ) -> Result<(), VmError> {
         if guest_mem.num_regions() > self.max_memslots {
             return Err(VmError::NotEnoughMemorySlots);
         }
-        self.set_kvm_memory_regions(guest_mem, track_dirty_pages, guest_memfds)?;
+        self.set_kvm_memory_regions(guest_mem, track_dirty_pages, guest_memfds, guest_ram_mappings)?;
         #[cfg(target_arch = "x86_64")]
         self.fd
             .set_tss_address(u64_to_usize(crate::arch::x86_64::layout::KVM_TSS_ADDRESS))
@@ -342,6 +343,7 @@ impl Vm {
         guest_mem: &GuestMemoryMmap,
         track_dirty_pages: bool,
         guest_memfds: &mut BTreeMap<u64, File>,
+        guest_ram_mappings: &mut Vec<GuestRamMapping>,
     ) -> Result<(), VmError> {
         let mut flags = 0u32;
         if track_dirty_pages {
@@ -363,12 +365,23 @@ impl Vm {
                 
                 if guest_memfd.is_some() {
                     info!("use region2!");
+                    //flags |= USER_MEMORY_REGION_READ;
+                    //flags |= USER_MEMORY_REGION_WRITE;
                     flags |= KVM_MEM_GUEST_MEMFD;
                     let (fd, offset) = memfd_param.unwrap();
                     let guest_memfd = fd as u32;
                     let guest_memfd_offset = offset;
                     info!("guest_memfd(fd) is {:?}", guest_memfd);
                     info!("guest_memfd_offset is {:?}", guest_memfd_offset);
+
+                    guest_ram_mappings.push(GuestRamMapping {
+                        gpa: region.start_addr().raw_value(),
+                        size: region.len(),
+                        slot,
+                        //zone_id: zone_id.clone(),
+                        //virtio_mem,
+                        //file_offset,
+                    });
 
                     let guest_memfd_file = unsafe { File::from_raw_fd(fd) };
                     if let mfd = guest_memfd_file {

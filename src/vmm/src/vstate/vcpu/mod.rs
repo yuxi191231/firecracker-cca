@@ -6,12 +6,16 @@
 // found in the THIRD-PARTY file.
 
 use std::cell::Cell;
+use std::collections::BTreeMap;
 use std::sync::atomic::{fence, Ordering};
 use std::sync::mpsc::{channel, Receiver, Sender, TryRecvError};
 use std::sync::{Arc, Barrier};
 use std::{fmt, io, thread};
+use std::fs::File;
+use vm_memory::GuestAddress;
 
-use kvm_bindings::{KVM_MEMORY_EXIT_FLAG_PRIVATE, KVM_SYSTEM_EVENT_RESET, KVM_SYSTEM_EVENT_SHUTDOWN, KVM_ARM_VCPU_REC};
+use kvm_bindings::{KVM_MEMORY_EXIT_FLAG_PRIVATE, KVM_SYSTEM_EVENT_RESET, KVM_SYSTEM_EVENT_SHUTDOWN, KVM_ARM_VCPU_REC,
+    kvm_memory_attributes, KVM_MEMORY_ATTRIBUTE_PRIVATE };
 use kvm_ioctls::{VcpuExit, VmFd};
 use libc::{c_int, c_void, siginfo_t};
 use log::{error, info, warn};
@@ -20,13 +24,19 @@ use utils::errno;
 use utils::eventfd::EventFd;
 use utils::signal::{register_signal_handler, sigrtmin, Killable};
 use utils::sm::StateMachine;
+use vm_memory::guest_memory;
+use crate::vstate::memory::GuestMemoryMmap;
+use vm_memory::GuestMemory;
 
 use crate::cpu_config::templates::{CpuConfiguration, GuestConfigError};
 use crate::logger::{IncMetric, METRICS};
 use crate::vstate::vm::Vm;
-//use crate::vstate::vm::MemoryFaultType;
 use crate::FcExitCode;
 use crate::vstate::vm::CCAError;
+use crate::vstate::vm::MemoryFaultType;
+use crate::vstate::vm::MemoryAttribute;
+use crate::GuestRamMapping;
+use crate::Vmm;
 
 /// Module with aarch64 vCPU implementation.
 #[cfg(target_arch = "aarch64")]
@@ -62,6 +72,10 @@ pub enum VcpuError {
     VcpuTlsInit,
     /// Vcpu not present in TLS
     VcpuTlsNotPresent,
+    /// MemoryFaultError
+    MemoryFaultError,
+    /// SetMemoryAttributes
+    SetMemoryAttributes,
 }
 
 /// Encapsulates configuration parameters for the guest vCPUS.
@@ -212,6 +226,18 @@ impl Vcpu {
         self.kvm_vcpu.peripherals.mmio_bus = Some(mmio_bus);
     }
 
+    pub fn set_vmm(
+        &mut self,
+        guest_ram_mappings: Vec<GuestRamMapping>,
+        guest_memory: GuestMemoryMmap,
+        //guest_memfds: BTreeMap<u64, File>,
+    ){
+        info!("into set_vmm()");
+        self.kvm_vcpu.peripherals.guest_ram_mappings = guest_ram_mappings;
+        self.kvm_vcpu.peripherals.guest_memory = guest_memory;
+        //self.kvm_vcpu.peripherals.guest_memfds = guest_memfds;
+    }
+
     /// Moves the vcpu to its own thread and constructs a VcpuHandle.
     /// The handle can be used to control the remote vcpu.
     pub fn start_threaded(
@@ -219,6 +245,7 @@ impl Vcpu {
         seccomp_filter: Arc<BpfProgram>,
         barrier: Arc<Barrier>,
     ) -> Result<VcpuHandle, StartThreadedError> {
+        info!("into Vcpu start_threaded");
         let event_sender = self.event_sender.take().expect("vCPU already started");
         let response_receiver = self.response_receiver.take().unwrap();
         let vcpu_thread = thread::Builder::new()
@@ -248,6 +275,7 @@ impl Vcpu {
         // Load seccomp filters for this vCPU thread.
         // Execution panics if filters cannot be loaded, use --no-seccomp if skipping filters
         // altogether is the desired behaviour.
+        info!("into Vcpu run()");
         if let Err(err) = seccompiler::apply_filter(seccomp_filter) {
             panic!(
                 "Failed to set the requested seccomp filters on vCPU {}: Error: {}",
@@ -263,6 +291,7 @@ impl Vcpu {
     fn running(&mut self) -> StateMachine<Self> {
         // This loop is here just for optimizing the emulation path.
         // No point in ticking the state machine if there are no external events.
+        info!("into Vcpu::running()");
         loop {
             match self.run_emulation() {
                 // Emulation ran successfully, continue.
@@ -439,8 +468,9 @@ impl Vcpu {
     ///
     /// Returns error or enum specifying whether emulation was handled or interrupted.
     pub fn run_emulation(&mut self) -> Result<VcpuEmulation, VcpuError> {
+        info!("into Vcpu::run_emulation()");
         if self.kvm_vcpu.fd.get_kvm_run().immediate_exit == 1u8 {
-            warn!("Requested a vCPU run with immediate_exit enabled. The operation was skipped");
+            info!("Requested a vCPU run with immediate_exit enabled. The operation was skipped");
             self.kvm_vcpu.fd.set_kvm_immediate_exit(0);
             return Ok(VcpuEmulation::Interrupted);
         }
@@ -451,7 +481,7 @@ impl Vcpu {
                 // Notify that this KVM_RUN was interrupted.
                 Ok(VcpuEmulation::Interrupted)
             }
-            emulation_result => handle_kvm_exit(&mut self.kvm_vcpu.peripherals, emulation_result),
+            emulation_result => handle_kvm_exit(&mut self.kvm_vcpu.peripherals, emulation_result, self.vm_fd.clone()),
         }
     }
 
@@ -469,7 +499,11 @@ impl Vcpu {
 fn handle_kvm_exit(
     peripherals: &mut Peripherals,
     emulation_result: Result<VcpuExit, errno::Error>,
+    vm_fd: Arc<VmFd>
 ) -> Result<VcpuEmulation, VcpuError> {
+    info!("into handle_kvm_exit()");
+    info!("emulation_result is {:?}", emulation_result);
+    //info!("peripherals is {:?}", peripherals);
     match emulation_result {
         Ok(run) => match run {
             VcpuExit::MmioRead(addr, data) => {
@@ -519,20 +553,25 @@ fn handle_kvm_exit(
                     VcpuExit::InternalError
                 )))
             }
-            // VcpuExit::MemoryFault(flags, gpa, size) => {
-            //     let priv_flag = KVM_MEMORY_EXIT_FLAG_PRIVATE as u64;
-            //     let fault_type = if (flags & priv_flag) != 0 {
-            //         MemoryFaultType::Private
-            //     } else {
-            //         MemoryFaultType::Shared
-            //     };
-            //     if let Some(vm_ops) = vm_ops {
-            //         return vm_ops
-            //             .memory_fault(fault_type, gpa, size)
-            //             .map(|_| cpu::VmExit::Ignore)
-            //             .map_err(|e| cpu::HypervisorCpuError::RunVcpu(e.into()));
-            //     }
-            // }
+            VcpuExit::MemoryFault(flags, gpa, size) => {
+                info!("into VcpuExit::MemoryFault");
+                let priv_flag = KVM_MEMORY_EXIT_FLAG_PRIVATE as u64;
+                let fault_type = if (flags & priv_flag) != 0 {
+                    MemoryFaultType::Private
+                } else {
+                    MemoryFaultType::Shared
+                };
+                memory_fault(
+                    fault_type,
+                    gpa,
+                    size,
+                    &peripherals.guest_ram_mappings,
+                    &vm_fd,
+                    &peripherals.guest_memory,
+                );
+                
+                Ok(VcpuEmulation::Handled)
+            }
             VcpuExit::SystemEvent(event_type, event_flags) => match event_type {
                 KVM_SYSTEM_EVENT_RESET | KVM_SYSTEM_EVENT_SHUTDOWN => {
                     info!(
@@ -579,26 +618,145 @@ fn handle_kvm_exit(
     }
 }
 
-//  /// Handle a memory fault VM exit. At the moment this is a request to
-// /// switch some memory either private->shared or shared->private.
-// pub fn memory_fault(
-//     &mut self,
-//     fault_type: MemoryFaultType,
-//     gpa: u64,
-//     size: u64,
-// ) -> std::result::Result<(), HypervisorVmError> {
-//     for mapping in &self.guest_ram_mappings {
-//         if mapping.gpa >= gpa + size || mapping.gpa + mapping.size < gpa {
-//             continue;
-//         }
+    fn memory_fault_range(
+        fault_type: MemoryFaultType,
+        gpa: u64,
+        size: u64,
+        mapping: &GuestRamMapping,
+        vm_fd: &Arc<VmFd>,
+        guest_memory: &GuestMemoryMmap,
+    ) -> Result<(), VcpuError> {
+        assert!(gpa >= mapping.gpa);
+        let offset = gpa - mapping.gpa;
+        info!(
+            "Memory fault gpa {:x} size {:x} type {:?} @[gpa {:x} size {:x}]",
+            gpa, size, fault_type, mapping.gpa, mapping.size,
+        );
+        match fault_type {
+            MemoryFaultType::Shared => {
+                info!("MemoryFaultType::Shared");
+                // Memory fault occured on a shared memory access
+                set_memory_attributes(&vm_fd, gpa, size, MemoryAttribute::Shared);
+                // let Some(guest_memfd) = self.guest_memfds.get(&mapping.gpa) else {
+                //     return Err(VcpuError::MemoryFaultError);
+                // };
 
-//         // Intersect the fault range with this mapping
-//         let base = std::cmp::max(mapping.gpa, gpa);
-//         let end = std::cmp::min(mapping.gpa + mapping.size, gpa + size);
-//         self.memory_fault_range(fault_type, base, end - base, mapping)?;
-//     }
-//     Ok(())
-// }
+                // Remove the pages from the private guest address space
+                // SAFETY: valid file descriptor
+                // let ret = unsafe {
+                //     libc::fallocate64(
+                //         //guest_memfd.as_raw_fd(),
+                //         17,
+                //         libc::FALLOC_FL_PUNCH_HOLE | libc::FALLOC_FL_KEEP_SIZE,
+                //         offset as libc::off64_t,
+                //         size as libc::off64_t,
+                //     )
+                // };
+                // if ret != 0 {
+                //     //let err = anyhow::Error::from(io::Error::last_os_error());
+                //     return Err(VcpuError::MemoryFaultError);
+                // }
+            }
+            MemoryFaultType::Private => {
+                info!("MemoryFaultType::Private");
+                // Memory fault occured on a private memory access
+                set_memory_attributes(&vm_fd, gpa, size, MemoryAttribute::Private);
+                // Remove the pages from the host address space
+                // TODO: vm_memory should probably do all this. We could call
+                // something like guest_memory.discard(range).
+                // TODO: I don't know if this is correct.
+                info!("guest_memory is {:?}", guest_memory);
+                let user_addr = guest_memory
+                    //.memory()
+                    .get_host_address(GuestAddress(mapping.gpa))
+                    .map_err(|_| VcpuError::MemoryFaultError)?
+                    as u64
+                    + offset;
+
+                let madv_flag = if guest_memory
+                    //.memory()
+                    .find_region(GuestAddress(mapping.gpa))
+                    .unwrap()
+                    .file_offset()
+                    .is_some()
+                {
+                    info!("MADV_REMOVE");
+                    libc::MADV_REMOVE
+                } else {
+                    // If the memory is not backed by a file, use DONTNEED.
+                    // Since we're using anonymous private mappings, the current
+                    // page is discarded and a subsequent access will yeld an
+                    // empty page. Of course the host is not supposed to access
+                    // it now since it's not tied to the guest.
+                    info!("MADV_DONTNEED");
+                    libc::MADV_DONTNEED
+                };
+                //SAFETY: the address and size are valid
+                let ret = unsafe {
+                    libc::madvise(
+                        user_addr as *mut libc::c_void,
+                        size as libc::size_t,
+                        madv_flag,
+                    )
+                };
+                if ret != 0 {
+                    //let err = anyhow::Error::from(io::Error::last_os_error());
+                    return Err(VcpuError::MemoryFaultError);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Handle a memory fault VM exit. At the moment this is a request to
+    /// switch some memory either private->shared or shared->private.
+    pub fn memory_fault(
+        fault_type: MemoryFaultType,
+        gpa: u64,
+        size: u64,
+        guest_ram_mappings: &Vec<GuestRamMapping>,
+        vm_fd: &Arc<VmFd>,
+        guest_memory: &GuestMemoryMmap,
+    ) -> Result<(), VcpuError> {
+        info!("into memory_fault()");
+        info!("guest_ram_mappings is {:?}", guest_ram_mappings);
+        info!("guest_memory is {:?}", guest_memory);
+        //info!("vm_fd is {:?}", vm_fd);
+        for mapping in guest_ram_mappings {
+            if mapping.gpa >= gpa + size || mapping.gpa + mapping.size < gpa {
+                continue;
+            }
+
+            // Intersect the fault range with this mapping
+            let base = std::cmp::max(mapping.gpa, gpa);
+            let end = std::cmp::min(mapping.gpa + mapping.size, gpa + size);
+            memory_fault_range(fault_type, base, end - base, mapping, vm_fd, guest_memory)?;
+        }
+        Ok(())
+    }
+
+pub fn set_memory_attributes(
+    vm_fd: &Arc<VmFd>,
+    address: u64,
+    size: u64,
+    attributes: MemoryAttribute,
+) -> Result<(), VcpuError> {
+    info!("into set_memory_attributes");
+    let attributes_num = if attributes == MemoryAttribute::Private {
+        KVM_MEMORY_ATTRIBUTE_PRIVATE as u64
+    } else {
+        0
+    };
+    let set_memory_attributes = kvm_memory_attributes {
+        address,
+        size,
+        attributes: attributes_num,
+        flags: 0,
+    };
+    info!("after config");
+    info!("address is {:?}, size is {:?}, attributes is {:?}", address, size, attributes_num);
+    vm_fd.set_memory_attributes(set_memory_attributes).map_err(|_| VcpuError::SetMemoryAttributes)
+}
 
 impl Drop for Vcpu {
     fn drop(&mut self) {

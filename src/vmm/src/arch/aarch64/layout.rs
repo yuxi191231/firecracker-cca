@@ -56,6 +56,7 @@ pub const DRAM_MEM_MAX_SIZE: usize = 0x00FF_8000_0000; // 1024 - 2 = 1022G.
 
 /// Start of RAM on 64 bit ARM.
 pub const SYSTEM_MEM_START: u64 = DRAM_MEM_START;
+pub const FDT_START: u64 = DRAM_MEM_START;
 
 /// This is used by ACPI device manager for acpi tables or devices like vmgenid
 /// In reality, 2MBs is an overkill, but immediately after this we write the kernel

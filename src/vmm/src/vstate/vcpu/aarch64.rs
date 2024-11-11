@@ -7,6 +7,9 @@
 
 use std::fmt::{Debug, Write};
 use log::info;
+use std::sync::{Arc, Barrier, Mutex};
+use std::fs::File;
+use crate::BTreeMap;
 
 use kvm_bindings::{
     kvm_mp_state, kvm_vcpu_init, KVM_ARM_VCPU_POWER_OFF, KVM_ARM_VCPU_PSCI_0_2, KVM_ARM_VCPU_SVE,
@@ -26,6 +29,8 @@ use crate::vcpu::{VcpuConfig, VcpuError};
 use crate::vstate::memory::{Address, GuestAddress, GuestMemoryMmap};
 use crate::vstate::vcpu::VcpuEmulation;
 use crate::vstate::vm::Vm;
+use crate::GuestRamMapping;
+use crate::Vmm;
 
 /// Errors associated with the wrappers over KVM ioctls.
 #[derive(Debug, PartialEq, Eq, thiserror::Error, displaydoc::Display)]
@@ -69,6 +74,9 @@ pub struct KvmVcpu {
 pub(super) struct Peripherals {
     /// mmio bus.
     pub mmio_bus: Option<crate::devices::Bus>,
+    pub guest_ram_mappings: Vec<GuestRamMapping>,
+    pub guest_memory: GuestMemoryMmap,
+    //pub guest_memfds: Option<BTreeMap<u64, File>>,
 }
 
 impl KvmVcpu {

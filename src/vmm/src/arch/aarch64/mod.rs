@@ -63,8 +63,8 @@ pub fn configure_system<T: DeviceInfoForFDT + Clone + Debug, S: std::hash::Build
     gic_device: &GICDevice,
     vmgenid: &Option<VmGenId>,
     initrd: &Option<super::InitrdConfig>,
-) -> Result<(), ConfigurationError> {
-    fdt::create_fdt(
+) -> Result<usize, ConfigurationError> {
+    let fdt_final = fdt::create_fdt(
         guest_mem,
         vcpu_mpidr,
         cmdline_cstring,
@@ -73,7 +73,7 @@ pub fn configure_system<T: DeviceInfoForFDT + Clone + Debug, S: std::hash::Build
         vmgenid,
         initrd,
     )?;
-    Ok(())
+    Ok(fdt_final.len())
 }
 
 /// Returns the memory address where the kernel could be loaded.

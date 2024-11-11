@@ -114,6 +114,8 @@ use std::sync::{Arc, Barrier, Mutex};
 use std::time::Duration;
 use std::collections::BTreeMap;
 use std::fs::File;
+use serde::Serialize;
+use serde::Deserialize;
 
 use device_manager::acpi::ACPIDeviceManager;
 use device_manager::resources::ResourceAllocator;
@@ -125,6 +127,7 @@ use utils::epoll::EventSet;
 use utils::eventfd::EventFd;
 use utils::terminal::Terminal;
 use utils::u64_to_usize;
+use vm_memory::guest_memory;
 use vstate::vcpu::{self, KvmVcpuConfigureError, StartThreadedError, VcpuSendEventError};
 
 use crate::arch::DeviceType;
@@ -150,6 +153,8 @@ use crate::vstate::memory::{
 use crate::vstate::vcpu::VcpuState;
 pub use crate::vstate::vcpu::{Vcpu, VcpuConfig, VcpuEvent, VcpuHandle, VcpuResponse};
 pub use crate::vstate::vm::Vm;
+pub use crate::vstate::vm::MemoryAttribute;
+use crate::vstate::vm::MemoryFaultType;
 
 /// Shorthand type for the EventManager flavour used by Firecracker.
 pub type EventManager = BaseEventManager<Arc<Mutex<dyn MutEventSubscriber>>>;
@@ -258,6 +263,8 @@ pub enum VmmError {
     VmmObserverTeardown(utils::errno::Error),
     /// VMGenID error: {0}
     VMGenID(#[from] VmGenIdError),
+    /// MemoryFaultError
+    MemoryFaultError,
 }
 
 /// Shorthand type for KVM dirty page bitmap.
@@ -295,6 +302,16 @@ pub enum DumpCpuConfigError {
     NotAllowed(String),
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct GuestRamMapping {
+    slot: u32,
+    gpa: u64,
+    size: u64,
+    //zone_id: String,
+    //virtio_mem: bool,
+    //file_offset: u64,
+}
+
 /// Contains the state and associated methods required for the Firecracker VMM.
 #[derive(Debug)]
 pub struct Vmm {
@@ -305,7 +322,13 @@ pub struct Vmm {
 
     // Guest VM core resources.
     vm: Vm,
-    guest_memory: GuestMemoryMmap,
+    pub guest_memory: GuestMemoryMmap,
+
+    // Keep track of calls to create_userspace_mapping() for guest RAM.
+    // This is useful for getting the dirty pages as we need to know the
+    // slots that the mapping is created in.
+    guest_ram_mappings: Vec<GuestRamMapping>,
+
     // A sorted list of guest memory regions that contain data at boot
     pub boot_data: BTreeMap<GuestAddress, GuestBootDataRegion>,
     use_guest_memfd: bool,
@@ -328,7 +351,7 @@ pub struct Vmm {
     acpi_device_manager: ACPIDeviceManager,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct GuestBootDataRegion {
     /// Size of the region
     pub size: usize,
@@ -373,6 +396,7 @@ impl Vmm {
         mut vcpus: Vec<Vcpu>,
         vcpu_seccomp_filter: Arc<BpfProgram>,
     ) -> Result<(), StartVcpusError> {
+        info!("into start vcpu()");
         let vcpu_count = vcpus.len();
         let barrier = Arc::new(Barrier::new(vcpu_count + 1));
 
@@ -393,9 +417,16 @@ impl Vmm {
         Vcpu::register_kick_signal_handler();
 
         self.vcpus_handles.reserve(vcpu_count);
+        
+        //let vm = self.vm;
+        //let guest_memfds = self.guest_memfds;
 
         for mut vcpu in vcpus.drain(..) {
-            vcpu.set_mmio_bus(self.mmio_device_manager.bus.clone());
+            vcpu.set_mmio_bus(self.mmio_device_manager.bus.clone()); 
+            // self.guest_memfds.clone(),
+            //info!("vm_fd is {:?}", self.vm.fd);
+            vcpu.set_vmm(self.guest_ram_mappings.clone(), self.guest_memory.clone());
+            //info!("vm_fd is {:?}", self.vm.fd);
             #[cfg(target_arch = "x86_64")]
             vcpu.kvm_vcpu
                 .set_pio_bus(self.pio_device_manager.io_bus.clone());
@@ -645,8 +676,9 @@ impl Vmm {
         // example, if this function were to be exposed through the VMM controller, the VMM
         // resources should cache the flag.
         let mut guest_memfds = BTreeMap::new();
+        let mut guest_ram_mappings = Vec::new();
         self.vm
-            .set_kvm_memory_regions(&self.guest_memory, enable, &mut guest_memfds)
+            .set_kvm_memory_regions(&self.guest_memory, enable, &mut guest_memfds, &mut guest_ram_mappings)
             .map_err(VmmError::Vm)
     }
 

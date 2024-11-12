@@ -232,7 +232,7 @@ impl Vcpu {
         guest_memory: GuestMemoryMmap,
         //guest_memfds: BTreeMap<u64, File>,
     ){
-        info!("into set_vmm()");
+        //info!("into set_vmm()");
         self.kvm_vcpu.peripherals.guest_ram_mappings = guest_ram_mappings;
         self.kvm_vcpu.peripherals.guest_memory = guest_memory;
         //self.kvm_vcpu.peripherals.guest_memfds = guest_memfds;
@@ -245,7 +245,7 @@ impl Vcpu {
         seccomp_filter: Arc<BpfProgram>,
         barrier: Arc<Barrier>,
     ) -> Result<VcpuHandle, StartThreadedError> {
-        info!("into Vcpu start_threaded");
+        //info!("into Vcpu start_threaded");
         let event_sender = self.event_sender.take().expect("vCPU already started");
         let response_receiver = self.response_receiver.take().unwrap();
         let vcpu_thread = thread::Builder::new()
@@ -275,7 +275,7 @@ impl Vcpu {
         // Load seccomp filters for this vCPU thread.
         // Execution panics if filters cannot be loaded, use --no-seccomp if skipping filters
         // altogether is the desired behaviour.
-        info!("into Vcpu run()");
+        //info!("into Vcpu run()");
         if let Err(err) = seccompiler::apply_filter(seccomp_filter) {
             panic!(
                 "Failed to set the requested seccomp filters on vCPU {}: Error: {}",
@@ -291,7 +291,7 @@ impl Vcpu {
     fn running(&mut self) -> StateMachine<Self> {
         // This loop is here just for optimizing the emulation path.
         // No point in ticking the state machine if there are no external events.
-        info!("into Vcpu::running()");
+        //info!("into Vcpu::running()");
         loop {
             match self.run_emulation() {
                 // Emulation ran successfully, continue.
@@ -469,19 +469,24 @@ impl Vcpu {
     /// Returns error or enum specifying whether emulation was handled or interrupted.
     pub fn run_emulation(&mut self) -> Result<VcpuEmulation, VcpuError> {
         info!("into Vcpu::run_emulation()");
+        //info!("immediate_exit is {:?}", self.kvm_vcpu.fd.get_kvm_run().immediate_exit);
         if self.kvm_vcpu.fd.get_kvm_run().immediate_exit == 1u8 {
             info!("Requested a vCPU run with immediate_exit enabled. The operation was skipped");
             self.kvm_vcpu.fd.set_kvm_immediate_exit(0);
             return Ok(VcpuEmulation::Interrupted);
         }
-
+        info!("before kvm run()");
         match self.kvm_vcpu.fd.run() {
             Err(ref err) if err.errno() == libc::EINTR => {
+                info!("Err");
                 self.kvm_vcpu.fd.set_kvm_immediate_exit(0);
                 // Notify that this KVM_RUN was interrupted.
                 Ok(VcpuEmulation::Interrupted)
             }
-            emulation_result => handle_kvm_exit(&mut self.kvm_vcpu.peripherals, emulation_result, self.vm_fd.clone()),
+            emulation_result => {
+                info!("before handle_kvm_exit emulation_result is {:?}", emulation_result);
+                handle_kvm_exit(&mut self.kvm_vcpu.peripherals, emulation_result, self.vm_fd.clone())
+            },
         }
     }
 
@@ -502,7 +507,7 @@ fn handle_kvm_exit(
     vm_fd: Arc<VmFd>
 ) -> Result<VcpuEmulation, VcpuError> {
     info!("into handle_kvm_exit()");
-    info!("emulation_result is {:?}", emulation_result);
+    //info!("emulation_result is {:?}", emulation_result);
     //info!("peripherals is {:?}", peripherals);
     match emulation_result {
         Ok(run) => match run {
@@ -665,7 +670,7 @@ fn handle_kvm_exit(
                 // TODO: vm_memory should probably do all this. We could call
                 // something like guest_memory.discard(range).
                 // TODO: I don't know if this is correct.
-                info!("guest_memory is {:?}", guest_memory);
+                //info!("guest_memory is {:?}", guest_memory);
                 let user_addr = guest_memory
                     //.memory()
                     .get_host_address(GuestAddress(mapping.gpa))
@@ -718,9 +723,9 @@ fn handle_kvm_exit(
         vm_fd: &Arc<VmFd>,
         guest_memory: &GuestMemoryMmap,
     ) -> Result<(), VcpuError> {
-        info!("into memory_fault()");
-        info!("guest_ram_mappings is {:?}", guest_ram_mappings);
-        info!("guest_memory is {:?}", guest_memory);
+        //info!("into memory_fault()");
+        //info!("guest_ram_mappings is {:?}", guest_ram_mappings);
+        //info!("guest_memory is {:?}", guest_memory);
         //info!("vm_fd is {:?}", vm_fd);
         for mapping in guest_ram_mappings {
             if mapping.gpa >= gpa + size || mapping.gpa + mapping.size < gpa {
@@ -741,7 +746,7 @@ pub fn set_memory_attributes(
     size: u64,
     attributes: MemoryAttribute,
 ) -> Result<(), VcpuError> {
-    info!("into set_memory_attributes");
+    //info!("into set_memory_attributes");
     let attributes_num = if attributes == MemoryAttribute::Private {
         KVM_MEMORY_ATTRIBUTE_PRIVATE as u64
     } else {
@@ -753,8 +758,8 @@ pub fn set_memory_attributes(
         attributes: attributes_num,
         flags: 0,
     };
-    info!("after config");
-    info!("address is {:?}, size is {:?}, attributes is {:?}", address, size, attributes_num);
+    //info!("after config");
+    //info!("address is {:?}, size is {:?}, attributes is {:?}", address, size, attributes_num);
     vm_fd.set_memory_attributes(set_memory_attributes).map_err(|_| VcpuError::SetMemoryAttributes)
 }
 

@@ -258,8 +258,11 @@ impl Vm {
 
         let max_memslots = kvm.get_nr_memslots();
         // Create fd for interacting with kvm-vm specific functions.
+        let mut vm_type = KVM_VM_TYPE_ARM_REALM;
+        vm_type |= 48; // ipa_size
+        let vm_fd: Arc<VmFd> = Arc::new(kvm.create_vm_with_type(vm_type).map_err(VmError::VmFd)?);
         //let vm_fd: Arc<VmFd> = Arc::new(kvm.create_vm().map_err(VmError::VmFd)?);
-        let vm_fd: Arc<VmFd> = Arc::new(kvm.create_vm_with_ipa_size(48 as u32).map_err(VmError::VmFd)?);
+        //let vm_fd: Arc<VmFd> = Arc::new(kvm.create_vm_with_ipa_size(48 as u32).map_err(VmError::VmFd)?);
         // let vm_fd = kvm.create_vm().map_err(VmError::VmFd)?;
 
         #[cfg(target_arch = "aarch64")]

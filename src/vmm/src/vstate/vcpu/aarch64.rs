@@ -159,7 +159,7 @@ impl KvmVcpu {
         }
 
         self.init_vcpu()?;
-        self.finalize_vcpu()?;
+        //self.finalize_vcpu()?;
 
         Ok(())
     }
@@ -212,7 +212,7 @@ impl KvmVcpu {
             set_register(&self.fd, sve_vls_reg).map_err(KvmVcpuError::RestoreState)?;
         }
 
-        self.finalize_vcpu()?;
+        //self.finalize_vcpu()?;
 
         // KVM_REG_ARM64_SVE_VLS needs to be skipped after vcpu is finalized.
         // If it is present it is handled in the code above.

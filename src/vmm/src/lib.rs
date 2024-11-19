@@ -443,6 +443,7 @@ impl Vmm {
 
     /// Sends a resume command to the vCPUs.
     pub fn resume_vm(&mut self) -> Result<(), VmmError> {
+        info!("into resume_vm()");
         self.mmio_device_manager.kick_devices();
 
         // Send the events.
@@ -467,6 +468,7 @@ impl Vmm {
 
     /// Sends a pause command to the vCPUs.
     pub fn pause_vm(&mut self) -> Result<(), VmmError> {
+        info!("into pause_vm()");
         // Send the events.
         self.vcpus_handles
             .iter()

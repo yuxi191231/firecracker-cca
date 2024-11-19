@@ -87,14 +87,14 @@ impl KvmVcpu {
     /// * `index` - Represents the 0-based CPU index between [0, max vcpus).
     /// * `vm` - The vm to which this vcpu will get attached.
     pub fn new(index: u8, vm: &Vm) -> Result<Self, KvmVcpuError> {
-        info!("into KvmVcpu::new()");
-        info!("vm.fd(): {:?}", vm.fd()); //vm.fd() is wrong
-        info!("index: {:?}", index);
+        //info!("into KvmVcpu::new()");
+        //info!("vm.fd(): {:?}", vm.fd()); //vm.fd() is wrong
+        //info!("index: {:?}", index);
         let kvm_vcpu = vm
             .fd()
             .create_vcpu(index.into())
             .map_err(KvmVcpuError::CreateVcpu)?;
-        info!("kvmvcpu: {:?}", kvm_vcpu);
+
         let mut kvi = Self::default_kvi(&vm.fd())?;
         // Secondary vcpus must be powered off for boot process.
         if 0 < index {

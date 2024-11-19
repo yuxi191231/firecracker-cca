@@ -349,10 +349,10 @@ impl Vm {
         guest_ram_mappings: &mut Vec<GuestRamMapping>,
     ) -> Result<(), VmError> {
         let mut flags = 0u32;
-        if track_dirty_pages {
-            info!("track_dirty_pages");
-            flags |= KVM_MEM_LOG_DIRTY_PAGES;
-        }
+        // if track_dirty_pages {
+        //     info!("track_dirty_pages");
+        //     flags |= KVM_MEM_LOG_DIRTY_PAGES;
+        // }
         guest_mem
             .iter()
             .zip(0u32..)
@@ -367,15 +367,15 @@ impl Vm {
                 //info!("memfd_params is {:?}", memfd_param);
                 
                 if guest_memfd.is_some() {
-                    info!("use region2!");
+                    //info!("use region2!");
                     //flags |= USER_MEMORY_REGION_READ;
                     //flags |= USER_MEMORY_REGION_WRITE;
                     flags |= KVM_MEM_GUEST_MEMFD;
                     let (fd, offset) = memfd_param.unwrap();
                     let guest_memfd = fd as u32;
                     let guest_memfd_offset = offset;
-                    info!("guest_memfd(fd) is {:?}", guest_memfd);
-                    info!("guest_memfd_offset is {:?}", guest_memfd_offset);
+                    //info!("guest_memfd(fd) is {:?}", guest_memfd);
+                    //info!("guest_memfd_offset is {:?}", guest_memfd_offset);
 
                     guest_ram_mappings.push(GuestRamMapping {
                         gpa: region.start_addr().raw_value(),
@@ -407,12 +407,13 @@ impl Vm {
                         ..Default::default()
                     };
                     
-                    info!("before set_user_memory_region2()");
+                    info!("set_user_memory_region2()");
                     info!("memory_region is {:?}", memory_region);
                     
                     // SAFETY: Safe because the fd is a valid KVM file descriptor.
                     unsafe { self.fd.set_user_memory_region2(memory_region) }
                 } else {
+                    info!("set_user_memory_region");
                     let memory_region = kvm_userspace_memory_region {
                         slot,
                         guest_phys_addr: region.start_addr().raw_value(),

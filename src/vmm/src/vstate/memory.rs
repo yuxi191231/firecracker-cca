@@ -7,6 +7,7 @@
 
 use std::fs::File;
 use std::io::SeekFrom;
+use crate::info;
 
 use serde::{Deserialize, Serialize};
 use utils::{errno, get_page_size, u64_to_usize};
@@ -177,6 +178,7 @@ impl GuestMemoryExtension for GuestMemoryMmap {
                     true => Some(AtomicBitmap::with_len(*region_size)),
                     false => None,
                 };
+                //info!("bitmap is {:?}", &bitmap);
                 let region = MmapRegionBuilder::new_with_bitmap(*region_size, bitmap)
                     .with_mmap_prot(prot)
                     .with_mmap_flags(flags)

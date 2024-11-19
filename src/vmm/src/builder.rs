@@ -307,6 +307,7 @@ pub fn build_microvm_for_boot(
         )
         .map_err(StartMicrovmError::GuestMemory)?
     };
+    info!("init guest memory is {:?}", &guest_memory);
     let mut boot_data = BTreeMap::new();
     //let guest_memfd = None;
     //info!("guest_memory 1 is {:?}", &guest_memory);
@@ -340,7 +341,7 @@ pub fn build_microvm_for_boot(
     // to maintain the same MMIO address referenced in the documentation
     // and tests.
     if vm_resources.boot_timer {
-        attach_boot_timer_device(&mut vmm, request_ts)?;
+        attach_boot_timer_device(&mut vmm, request_ts.clone())?;
     }
 
     if let Some(balloon) = vm_resources.balloon.get() {
@@ -422,7 +423,12 @@ pub fn build_microvm_for_boot(
             .map_err(|_| CCAError::FinalizeRealm);
     }
     
+    let boot_ts = TimestampUs::default();
+    //info!("request_ts is {:?}", &request_ts);
+    info!("boot time is {:?}", boot_ts.time_us - request_ts.time_us);
+
     // Move vcpus to their own threads and start their state machine in the 'Paused' state.
+    info!("vcpus is {:?}", &vcpus);
     vmm.start_vcpus(
         vcpus,
         seccomp_filters
@@ -464,16 +470,16 @@ pub fn build_and_boot_microvm(
     event_manager: &mut EventManager,
     seccomp_filters: &BpfThreadMap,
 ) -> Result<Arc<Mutex<Vmm>>, StartMicrovmError> {
-    debug!("event_start: build microvm for boot");
+    info!("event_start: build microvm for boot");
     let vmm = build_microvm_for_boot(instance_info, vm_resources, event_manager, seccomp_filters)?;
-    debug!("event_end: build microvm for boot");
+    info!("event_end: build microvm for boot");
     // The vcpus start off in the `Paused` state, let them run.
-    debug!("event_start: boot microvm");
+    info!("event_start: boot microvm");
     vmm.lock()
         .unwrap()
         .resume_vm()
         .map_err(StartMicrovmError::Internal)?;
-    debug!("event_end: boot microvm");
+    info!("event_end: boot microvm");
     Ok(vmm)
 }
 
@@ -685,7 +691,7 @@ fn load_initrd_from_config(
     boot_data: &mut BTreeMap<GuestAddress, GuestBootDataRegion>
 ) -> Result<Option<InitrdConfig>, StartMicrovmError> {
     use self::StartMicrovmError::InitrdRead;
-    info!("into load_initrd_from_config");
+    //info!("into load_initrd_from_config");
 
     Ok(match &boot_cfg.initrd_file {
         Some(f) => Some(load_initrd(

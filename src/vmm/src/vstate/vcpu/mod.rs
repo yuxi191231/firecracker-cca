@@ -210,14 +210,16 @@ impl Vcpu {
         let (event_sender, event_receiver) = channel();
         let (response_sender, response_receiver) = channel();
         let kvm_vcpu = KvmVcpu::new(index, vm).unwrap();
+        info!("kvm_vcpu is {:?}", kvm_vcpu);
+        info!("vcpu vm_fd is {:?}", &vm.fd());
         Ok(Vcpu {
-            exit_evt,
+            kvm_vcpu,
             vm_fd: vm.fd(),
+            exit_evt,
             event_receiver,
             event_sender: Some(event_sender),
             response_receiver: Some(response_receiver),
             response_sender,
-            kvm_vcpu,
         })
     }
 
@@ -275,7 +277,7 @@ impl Vcpu {
         // Load seccomp filters for this vCPU thread.
         // Execution panics if filters cannot be loaded, use --no-seccomp if skipping filters
         // altogether is the desired behaviour.
-        //info!("into Vcpu run()");
+        info!("into Vcpu run()");
         if let Err(err) = seccompiler::apply_filter(seccomp_filter) {
             panic!(
                 "Failed to set the requested seccomp filters on vCPU {}: Error: {}",
@@ -289,6 +291,7 @@ impl Vcpu {
 
     // This is the main loop of the `Running` state.
     fn running(&mut self) -> StateMachine<Self> {
+        info!("into running()");
         // This loop is here just for optimizing the emulation path.
         // No point in ticking the state machine if there are no external events.
         //info!("into Vcpu::running()");
@@ -362,6 +365,7 @@ impl Vcpu {
 
     // This is the main loop of the `Paused` state.
     fn paused(&mut self) -> StateMachine<Self> {
+        info!("into paused()");
         match self.event_receiver.recv() {
             // Paused ---- Resume ----> Running
             Ok(VcpuEvent::Resume) => {
@@ -476,17 +480,42 @@ impl Vcpu {
             return Ok(VcpuEmulation::Interrupted);
         }
         info!("before kvm run()");
+        //info!("kvm_vcpu peripherals is {:?}", self.kvm_vcpu.peripherals.mmio_bus);
         match self.kvm_vcpu.fd.run() {
-            Err(ref err) if err.errno() == libc::EINTR => {
+            Err(ref err) => {
                 info!("Err");
-                self.kvm_vcpu.fd.set_kvm_immediate_exit(0);
-                // Notify that this KVM_RUN was interrupted.
-                Ok(VcpuEmulation::Interrupted)
+                match err.errno() {
+                    libc::EAGAIN => Ok(VcpuEmulation::Handled),
+                    libc::EINTR => {
+                        self.kvm_vcpu.fd.set_kvm_immediate_exit(0);
+                        // Notify that this KVM_RUN was interrupted.
+                        Ok(VcpuEmulation::Interrupted)
+                    }
+                    libc::ENOSYS => {
+                        //METRICS.vcpu.failures.inc();
+                        error!(
+                            "Received ENOSYS error because KVM failed to emulate an instruction."
+                        );
+                        Err(VcpuError::FaultyKvmExit(
+                            "Received ENOSYS error because KVM failed to emulate an instruction."
+                                .to_string(),
+                        ))
+                    }
+                    _ => {
+                        //METRICS.vcpu.failures.inc();
+                        error!("Failure during vcpu run: {}", err.errno());
+                        Err(VcpuError::FaultyKvmExit(format!("{}", err)))
+                    }
+                }
             }
             emulation_result => {
                 info!("before handle_kvm_exit emulation_result is {:?}", emulation_result);
                 handle_kvm_exit(&mut self.kvm_vcpu.peripherals, emulation_result, self.vm_fd.clone())
-            },
+            }
+            // _ => {
+            //     info!("after kvm run()");
+            //     Err(VcpuError::MemoryFaultError)
+            // }
         }
     }
 
@@ -723,11 +752,11 @@ fn handle_kvm_exit(
         vm_fd: &Arc<VmFd>,
         guest_memory: &GuestMemoryMmap,
     ) -> Result<(), VcpuError> {
-        //info!("into memory_fault()");
-        //info!("guest_ram_mappings is {:?}", guest_ram_mappings);
+        info!("into memory_fault()");
         //info!("guest_memory is {:?}", guest_memory);
         //info!("vm_fd is {:?}", vm_fd);
         for mapping in guest_ram_mappings {
+            info!("mapping is {:?}", &mapping);
             if mapping.gpa >= gpa + size || mapping.gpa + mapping.size < gpa {
                 continue;
             }
@@ -759,7 +788,7 @@ pub fn set_memory_attributes(
         flags: 0,
     };
     //info!("after config");
-    //info!("address is {:?}, size is {:?}, attributes is {:?}", address, size, attributes_num);
+    info!("address is {:?}, size is {:?}, attributes is {:?}", address, size, attributes_num);
     vm_fd.set_memory_attributes(set_memory_attributes).map_err(|_| VcpuError::SetMemoryAttributes)
 }
 
